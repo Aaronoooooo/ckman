@@ -758,7 +758,7 @@ func DeleteCkClusterNode(conf *model.CKManClickHouseConfig, ip string) error {
 			}
 		} else {
 			// delete replica path
-			replicaName := conf.Shards[shardNum].Replicas[replicaNum].HostName
+			replicaName := conf.Shards[shardNum].Replicas[replicaNum].Ip
 			replicaPath := fmt.Sprintf("%s/replicas/%s", path, replicaName)
 			log.Logger.Debugf("replicaPath: %s", replicaPath)
 			err := service.DeleteAll(replicaPath)
@@ -778,9 +778,18 @@ func DeleteCkClusterNode(conf *model.CKManClickHouseConfig, ip string) error {
 
 	// stop the node
 	deploy := ConvertCKDeploy(conf)
+	packages := make([]string, 3)
+	packages[0] = fmt.Sprintf("%s-%s", model.CkClientPackagePrefix, conf.Version)
+	packages[1] = fmt.Sprintf("%s-%s", model.CkServerPackagePrefix, conf.Version)
+	packages[2] = fmt.Sprintf("%s-%s", model.CkCommonPackagePrefix, conf.Version)
+	deploy.Packages = packages
 	deploy.Hosts = []string{ip}
 	if err := deploy.Stop(); err != nil {
 		log.Logger.Warnf("can't stop node %s, ignore it", ip)
+	}
+
+	if err := deploy.Uninstall(); err != nil {
+		return err
 	}
 
 	// remove the node from conf struct
