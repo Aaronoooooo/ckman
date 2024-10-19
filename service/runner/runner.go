@@ -1,15 +1,15 @@
 package runner
 
 import (
+	"runtime/debug"
+	"time"
+
 	"github.com/housepower/ckman/common"
 	"github.com/housepower/ckman/config"
 	"github.com/housepower/ckman/deploy"
 	"github.com/housepower/ckman/log"
 	"github.com/housepower/ckman/model"
 	"github.com/housepower/ckman/repository"
-	"github.com/pkg/errors"
-	"runtime/debug"
-	"time"
 )
 
 type RunnerService struct {
@@ -23,7 +23,7 @@ func NewRunnerService(serverIp string, config config.CKManServerConfig) *RunnerS
 	return &RunnerService{
 		ServerIp: serverIp,
 		Interval: config.TaskInterval,
-		Pool:     common.NewWorkerPool(common.MaxWorkersDefault, 2*common.MaxWorkersDefault),
+		Pool:     common.NewWorkerPool(8, 16), // for tasks, 8 goroutines is enough
 		Done:     make(chan struct{}),
 	}
 }
@@ -80,12 +80,13 @@ func (runner *RunnerService) ProcesswithTaskType(task model.Task) error {
 	if err := TaskHandleFunc[task.TaskType](&task); err != nil {
 		deploy.SetNodeStatus(&task, model.NodeStatusFailed, model.ALL_NODES_DEFAULT)
 		_ = deploy.SetTaskStatus(&task, model.TaskStatusFailed, err.Error())
-		return errors.Wrap(err,  "")
+		return err
 	}
 	return deploy.SetTaskStatus(&task, model.TaskStatusSuccess, model.TaskStatusMap[model.TaskStatusSuccess])
 }
 
 func (runner *RunnerService) Stop() {
+	runner.Pool.Close()
 	if checkDone() {
 		log.Logger.Infof("all task are finished, exit gracefully")
 		runner.Shutdown()
@@ -108,6 +109,14 @@ func (runner *RunnerService) Stop() {
 			}
 		case <-timeout.C:
 			log.Logger.Warnf("time out waiting for task running, ignore and force exit.")
+			tasks, _ := repository.Ps.GetAllTasks()
+			for _, task := range tasks {
+				if task.Status == model.TaskStatusRunning {
+					task.Status = model.TaskStatusStopped
+					repository.Ps.UpdateTask(task)
+				}
+			}
+
 			runner.Shutdown()
 			return
 		}

@@ -1,3 +1,60 @@
+# v2.2.8
+- fix: migrate tool panic while init log
+- feat: show uptime
+- feat: do not return error when check failed
+- feat: check type  when alter table
+- feat: add getlog api
+- feat: support rename column when alter table
+- feat: watch cluster status while deployed by tgz
+- fix: restart cluster when change profiles and quotas
+- feat: add dryrun when create table
+- feat: add cron job to sync distributed table
+- fix: check access issue
+- fix: scheduled task security protection
+- fix: upgrade cause permission denied issue
+- feat:add getpartions by table api
+
+# v2.2.7
+- dm8 database adapt
+- handle map is null in frontend
+
+
+# v2.2.6
+- fix: When deploying a cluster and modifying the cluster configuration, an error will be reported if Profiles and quotas are not filled in
+- fix: The cluster installation package type deployed in the old version is not automatically populated, resulting in the problem that the configuration cannot be modified
+- feat: support password_double_sha1_hex and password_sha256_hex to encrypt password
+- feat: sshpassword can be empty
+- feat: login password visiable
+- fix: goroutine leak issue 
+- feat: use scp instead of sftp
+- fix: store failed when persistent is mysql
+- feat: sort tasks by updatetime
+- fix: task duration always be  0s while persistant is mysql
+- fix: select all and only return first 10000 records
+- feat: add alter table ttl
+- fix: query select panic when type is Nullbale(Float64) and value is null
+- fix: sync logic schema schedule when ckman is multiple
+- fix: cluster setting cause duplicate logics issue
+- fix: update running task to stopped when force shutdown
+
+
+# v2.2.5
+- refactor package management
+- add api: kill open session & stop running task
+- matching paltform when deploy
+- config editable
+- fix add node failed over 22.x
+- fix tableList Duplication bug
+- use gsypt to encode password
+- ping cluster use default database
+- add `database_atomic_delay_before_drop_table_sec`
+- add swagger link and document link
+- config logic cluster
+- check path non-prefix
+- support tgz deployment without root
+- users conf with profiles and quotas
+- make a cron job to sync logic table schema
+
 # v2.2.4
 - delete record when destory cluster && check timeout issue
 - do not response such errors when prometheus address is invalid

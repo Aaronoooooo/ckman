@@ -2,10 +2,10 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/housepower/ckman/repository"
 	"github.com/pkg/errors"
-	"sort"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/housepower/ckman/common"
@@ -15,56 +15,63 @@ import (
 )
 
 type DeployController struct {
+	Controller
 	config *config.CKManConfig
 }
 
-func NewDeployController(config *config.CKManConfig) *DeployController {
+func NewDeployController(config *config.CKManConfig, wrapfunc Wrapfunc) *DeployController {
 	deploy := &DeployController{}
 	deploy.config = config
+	deploy.wrapfunc = wrapfunc
 	return deploy
 }
 
-// @Summary Deploy clickhouse
-// @Description Deploy clickhouse
+// @Summary 创建集群
+// @Description 使用ckman创建集群
 // @version 1.0
 // @Security ApiKeyAuth
+// @Tags deploy
+// @Accept  json
 // @Param req body model.CKManClickHouseConfig true "request body"
-// @Failure 200 {string} json "{"retCode":"5000","retMsg":"invalid params","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5011","retMsg":"init package failed","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5012","retMsg":"prepare package failed","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5013","retMsg":"install package failed","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5014","retMsg":"config package failed","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5015","retMsg":"start package failed","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5016","retMsg":"check package failed","entity":""}"
-// @Success 200 {string} json "{"retCode":"0000","retMsg":"success","entity":nil}"
-// @Router /api/v1/deploy/ck [post]
-func (d *DeployController) DeployCk(c *gin.Context) {
+// @Failure 200 {string} json "{"code":"5000","msg":"invalid params","data":""}"
+// @Failure 200 {string} json "{"code":"5003","msg":"数据校验失败","data":""}"
+// @Failure 200 {string} json "{"code":"5801","msg":"数据插入失败","data":""}"
+// @Success 200 {string} json "{"code":"0000","msg":"success","data":nil}"
+// @Router /api/v2/deploy/ck [post]
+func (controller *DeployController) DeployCk(c *gin.Context) {
 	var conf model.CKManClickHouseConfig
 	err := DecodeRequestBody(c.Request, &conf, GET_SCHEMA_UI_DEPLOY)
 	if err != nil {
-		model.WrapMsg(c, model.INVALID_PARAMS, err)
+		controller.wrapfunc(c, model.E_INVALID_PARAMS, err)
 		return
 	}
 
-	if err := checkDeployParams(&conf); err != nil {
-		model.WrapMsg(c, model.INVALID_PARAMS, err)
+	force := common.TernaryExpression(c.Query("force") == "true", true, false).(bool)
+
+	if err := checkDeployParams(&conf, force); err != nil {
+		controller.wrapfunc(c, model.E_DATA_CHECK_FAILED, err)
 		return
 	}
 
 	tmp := deploy.NewCkDeploy(conf)
-	tmp.Packages = deploy.BuildPackages(conf.Version, conf.PkgType)
-
+	tmp.Packages = deploy.BuildPackages(conf.Version, conf.PkgType, conf.Cwd)
+	if conf.KeeperWithStanalone() {
+		if tmp.Packages.Keeper == "" {
+			controller.wrapfunc(c, model.E_DATA_CHECK_FAILED, errors.Errorf("keeper package not found"))
+			return
+		}
+	}
 	taskId, err := deploy.CreateNewTask(conf.Cluster, model.TaskTypeCKDeploy, tmp)
 	if err != nil {
-		model.WrapMsg(c, model.DEPLOY_CK_CLUSTER_ERROR, err)
+		controller.wrapfunc(c, model.E_DATA_INSERT_FAILED, err)
 		return
 	}
-	model.WrapMsg(c, model.SUCCESS, taskId)
+	controller.wrapfunc(c, model.E_SUCCESS, taskId)
 }
 
-func checkDeployParams(conf *model.CKManClickHouseConfig) error {
+func checkDeployParams(conf *model.CKManClickHouseConfig, force bool) error {
 	var err error
-	if  repository.Ps.ClusterExists(conf.Cluster) {
+	if repository.Ps.ClusterExists(conf.Cluster) {
 		return errors.Errorf("cluster %s is exist", conf.Cluster)
 	}
 
@@ -86,27 +93,89 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 	} else {
 		return errors.Errorf("package %s not found on server", conf.PkgName)
 	}
-	if len(conf.Hosts) == 0 {
+	if strings.HasSuffix(conf.PkgType, common.PkgSuffixTgz) {
+		if conf.Cwd == "" {
+			return errors.Errorf("cwd can't be empty for tgz deployment")
+		}
+		if !strings.HasSuffix(conf.Cwd, "/") {
+			return errors.Errorf(fmt.Sprintf("path %s must end with '/'", conf.Cwd))
+		}
+		conf.NeedSudo = false
+		if err = checkAccess(conf.Cwd, conf); err != nil {
+			return errors.Wrapf(err, "check access error")
+		}
+	} else {
+		conf.NeedSudo = true
+	}
+	if len(conf.Shards) == 0 {
 		return errors.Errorf("can't find any host")
 	}
-	if conf.Hosts, err = common.ParseHosts(conf.Hosts); err != nil {
-		return errors.Wrap(err, "")
+
+	for _, shard := range conf.Shards {
+		if len(shard.Replicas) == 0 {
+			return errors.Errorf("can't find any host")
+		}
+		for _, replica := range shard.Replicas {
+			conf.Hosts = append(conf.Hosts, replica.Ip)
+		}
+	}
+
+	if !force {
+		if err := common.CheckCkInstance(conf); err != nil {
+			return err
+		}
 	}
 
 	if err = MatchingPlatfrom(conf); err != nil {
-		return errors.Wrap(err, "")
-	}
-	//if conf.IsReplica && len(conf.Hosts)%2 == 1 {
-	//	return errors.Errorf("When supporting replica, the number of nodes must be even")
-	//}
-	conf.Shards = GetShardsbyHosts(conf.Hosts, conf.IsReplica)
-	if len(conf.ZkNodes) == 0 {
-		return errors.Errorf("zookeeper nodes must not be empty")
-	}
-	if conf.ZkNodes, err = common.ParseHosts(conf.ZkNodes); err != nil {
 		return err
 	}
+
+	conf.IsReplica = true
+	if conf.Keeper == model.ClickhouseKeeper {
+		if conf.KeeperConf == nil {
+			return errors.Errorf("keeper conf must not be empty")
+		}
+		if conf.KeeperConf.Runtime == model.KeeperRuntimeStandalone {
+			if conf.KeeperConf.KeeperNodes, err = common.ParseHosts(conf.KeeperConf.KeeperNodes); err != nil {
+				return err
+			}
+			if len(conf.KeeperConf.KeeperNodes) == 0 {
+				return errors.Errorf("keeper nodes must not be empty")
+			}
+		} else if conf.KeeperConf.Runtime == model.KeeperRuntimeInternal {
+			if strings.HasSuffix(conf.PkgType, common.PkgSuffixTgz) {
+				return errors.Errorf("keeper internal runtime doesn't support tgz deployment")
+			}
+			conf.KeeperConf.KeeperNodes = make([]string, len(conf.Hosts))
+			copy(conf.KeeperConf.KeeperNodes, conf.Hosts)
+
+		} else {
+			return errors.Errorf("keeper runtime %s is not supported", conf.KeeperConf.Runtime)
+		}
+		if !strings.HasSuffix(conf.KeeperConf.LogPath, "/") {
+			return errors.Errorf(fmt.Sprintf("path %s must end with '/'", conf.KeeperConf.LogPath))
+		}
+		if !strings.HasSuffix(conf.KeeperConf.SnapshotPath, "/") {
+			return errors.Errorf(fmt.Sprintf("path %s must end with '/'", conf.KeeperConf.SnapshotPath))
+		}
+		if err := checkAccess(conf.KeeperConf.LogPath, conf); err != nil {
+			return errors.Wrapf(err, "check access error")
+		}
+		if err := checkAccess(conf.KeeperConf.SnapshotPath, conf); err != nil {
+			return errors.Wrapf(err, "check access error")
+		}
+	} else {
+		if len(conf.ZkNodes) == 0 {
+			return errors.Errorf("zookeeper nodes must not be empty")
+		}
+		if conf.ZkNodes, err = common.ParseHosts(conf.ZkNodes); err != nil {
+			return err
+		}
+	}
 	if conf.LogicCluster != nil {
+		if conf.Cluster == *conf.LogicCluster {
+			return errors.Errorf("cluster name %s must not the same with logic name", conf.Cluster)
+		}
 		logics, err := repository.Ps.GetLogicClusterbyName(*conf.LogicCluster)
 		if err == nil {
 			for _, logic := range logics {
@@ -114,6 +183,9 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 				if err1 == nil {
 					if clus.Password != conf.Password {
 						return errors.Errorf("default password %s is diffrent from other logic cluster: cluster %s password %s", conf.Password, logic, clus.Password)
+					}
+					if clus.Mode == model.CkClusterImport {
+						return errors.Errorf("logic cluster %s contains cluster which import, import cluster: %s ", *conf.LogicCluster, clus.Cluster)
 					}
 				}
 			}
@@ -124,9 +196,6 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 		return errors.Errorf("ssh user must not be empty")
 	}
 
-	if conf.AuthenticateType != model.SshPasswordUsePubkey && conf.SshPassword == "" {
-		return errors.Errorf("ssh password must not be empty")
-	}
 	if !strings.HasSuffix(conf.Path, "/") {
 		return errors.Errorf(fmt.Sprintf("path %s must end with '/'", conf.Path))
 	}
@@ -135,7 +204,7 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 	}
 
 	disks := make([]string, 0)
-	localPath :=  make([]string, 0)
+	localPath := make([]string, 0)
 	hdfsEndpoints := make([]string, 0)
 	s3Endpoints := make([]string, 0)
 	disks = append(disks, "default")
@@ -149,7 +218,7 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 					return errors.Errorf(fmt.Sprintf("path %s must end with '/'", disk.DiskLocal.Path))
 				}
 				if err = checkAccess(disk.DiskLocal.Path, conf); err != nil {
-					return errors.Wrap(err, "")
+					return err
 				}
 				localPath = append(localPath, disk.DiskLocal.Path)
 			case "hdfs":
@@ -169,14 +238,14 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 				return errors.Errorf("unsupport disk type %s", disk.Type)
 			}
 		}
-		if err = EnsurePathNonPrefix(localPath); err != nil {
-			return errors.Wrap(err, "")
+		if err = common.EnsurePathNonPrefix(localPath); err != nil {
+			return err
 		}
-		if err = EnsurePathNonPrefix(hdfsEndpoints); err != nil {
-			return errors.Wrap(err, "")
+		if err = common.EnsurePathNonPrefix(hdfsEndpoints); err != nil {
+			return err
 		}
-		if err = EnsurePathNonPrefix(s3Endpoints); err != nil {
-			return errors.Wrap(err, "")
+		if err = common.EnsurePathNonPrefix(s3Endpoints); err != nil {
+			return err
 		}
 		for _, policy := range conf.Storage.Policies {
 			for _, vol := range policy.Volumns {
@@ -188,6 +257,35 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 			}
 		}
 	}
+
+	var profiles []string
+	profiles = append(profiles, model.ClickHouseUserProfileDefault)
+	if len(conf.UsersConf.Profiles) > 0 {
+		for _, profile := range conf.UsersConf.Profiles {
+			if common.ArraySearch(profile.Name, profiles) {
+				return errors.Errorf("profile %s is duplicate", profile.Name)
+			}
+			if profile.Name == model.ClickHouseUserProfileDefault {
+				return errors.Errorf("profile can't be default")
+			}
+			profiles = append(profiles, profile.Name)
+		}
+	}
+
+	var quotas []string
+	quotas = append(quotas, model.ClickHouseUserQuotaDefault)
+	if len(conf.UsersConf.Profiles) > 0 {
+		for _, quota := range conf.UsersConf.Quotas {
+			if common.ArraySearch(quota.Name, profiles) {
+				return errors.Errorf("quota %s is duplicate", quota.Name)
+			}
+			if quota.Name == model.ClickHouseUserQuotaDefault {
+				return errors.Errorf("quota can't be default")
+			}
+			quotas = append(quotas, quota.Name)
+		}
+	}
+
 	var usernames []string
 	if len(conf.UsersConf.Users) > 0 {
 		for _, user := range conf.UsersConf.Users {
@@ -199,6 +297,14 @@ func checkDeployParams(conf *model.CKManClickHouseConfig) error {
 			}
 			if user.Name == "" || user.Password == "" {
 				return errors.Errorf("username or password can't be empty")
+			}
+			user.Profile = common.GetStringwithDefault(user.Profile, model.ClickHouseUserProfileDefault)
+			if !common.ArraySearch(user.Profile, profiles) {
+				return errors.Errorf("profile %s is invalid", user.Profile)
+			}
+			user.Quota = common.GetStringwithDefault(user.Quota, model.ClickHouseUserQuotaDefault)
+			if !common.ArraySearch(user.Quota, quotas) {
+				return errors.Errorf("quota %s is invalid", user.Quota)
 			}
 			usernames = append(usernames, user.Name)
 		}
@@ -235,11 +341,31 @@ func GetShardsbyHosts(hosts []string, isReplica bool) []model.CkShard {
 }
 
 func checkAccess(localPath string, conf *model.CKManClickHouseConfig) error {
-	cmd := fmt.Sprintf(`su sshd -s /bin/bash -c "cd %s && echo $?"`, localPath)
+	cmd := ""
+	if conf.NeedSudo {
+		cmd = fmt.Sprintf(`su clickhouse -s /bin/bash -c "cd %s && echo $?"`, localPath)
+	} else {
+		cmd = fmt.Sprintf("cd %s && echo $?", localPath)
+	}
 	for _, host := range conf.Hosts {
-		output, err := common.RemoteExecute(conf.SshUser, conf.SshPassword, host, conf.SshPort, cmd)
+		sshOpts := common.SshOptions{
+			User:             conf.SshUser,
+			Password:         conf.SshPassword,
+			Port:             conf.SshPort,
+			Host:             host,
+			NeedSudo:         conf.NeedSudo,
+			AuthenticateType: conf.AuthenticateType,
+		}
+		if conf.NeedSudo {
+			// create clickhouse group and user
+			var cmds []string
+			//cmds = append(cmds, "groupadd -r clickhouse")
+			cmds = append(cmds, "useradd -r --shell /bin/false --home-dir /nonexistent clickhouse")
+			_, _ = common.RemoteExecute(sshOpts, strings.Join(cmds, ";"))
+		}
+		output, err := common.RemoteExecute(sshOpts, cmd)
 		if err != nil {
-			return errors.Wrap(err, "")
+			return err
 		}
 		access := strings.Trim(output, "\n")
 		if access != "0" {
@@ -257,32 +383,22 @@ func MatchingPlatfrom(conf *model.CKManClickHouseConfig) error {
 	if arch == "arm64" {
 		arch = "aarch64"
 	}
-	cmd  := "uname -m"
+	cmd := "uname -m"
 	for _, host := range conf.Hosts {
-		result, err := common.RemoteExecute(conf.SshUser, conf.SshPassword, host, conf.SshPort, cmd)
+		sshOpts := common.SshOptions{
+			User:             conf.SshUser,
+			Password:         conf.SshPassword,
+			Port:             conf.SshPort,
+			Host:             host,
+			NeedSudo:         conf.NeedSudo,
+			AuthenticateType: conf.AuthenticateType,
+		}
+		result, err := common.RemoteExecute(sshOpts, cmd)
 		if err != nil {
 			return errors.Errorf("host %s get platform failed: %v", host, err)
 		}
 		if result != arch {
 			return errors.Errorf("arch %s mismatched, pkgType: %s", arch, conf.PkgType)
-		}
-	}
-	return nil
-}
-
-func EnsurePathNonPrefix(paths []string) error {
-	if len(paths) < 2 {
-		return nil
-	}
-	sort.Strings(paths)
-	for i := 1; i < len(paths); i++ {
-		curr := paths[i]
-		prev := paths[i-1]
-		if prev == curr {
-			return errors.Errorf("path %s is duplicate", curr)
-		}
-		if strings.HasPrefix(curr, prev) {
-			return errors.Errorf("path %s is subdir of path %s", curr, prev)
 		}
 	}
 	return nil

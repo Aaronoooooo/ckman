@@ -2,9 +2,10 @@ package deploy
 
 import (
 	"fmt"
-	"github.com/housepower/ckman/common"
 	"path"
 	"strings"
+
+	"github.com/housepower/ckman/common"
 )
 
 type RpmFacotry struct{}
@@ -17,36 +18,47 @@ func (RpmFacotry) Create() CmdAdpt {
 	return &RpmPkg{}
 }
 
-type RpmPkg struct {}
+type RpmPkg struct{}
 
-func (p *RpmPkg)StartCmd(svr string) string{
+func (p *RpmPkg) StartCmd(svr, cwd string) string {
 	return "systemctl start " + svr
 }
-func (p *RpmPkg)StopCmd(svr string) string{
+func (p *RpmPkg) StopCmd(svr, cwd string) string {
 	return "systemctl stop " + svr
 }
 
-func (p *RpmPkg)RestartCmd(svr string) string {
+func (p *RpmPkg) RestartCmd(svr, cwd string) string {
 	return "systemctl restart " + svr
 }
 
-func (p *RpmPkg)InstallCmd(pkgs []string) string{
+func (p *RpmPkg) InstallCmd(svr string, pkgs Packages) string {
 	var cmd string
-	for _, pkg := range pkgs {
-		cmd += fmt.Sprintf("%s -ivh %s;", rpmPrefix, path.Join(common.TmpWorkDirectory, pkg))
+	if svr == CkSvrName {
+		for _, pkg := range pkgs.PkgLists {
+			cmd += fmt.Sprintf("%s -ivh %s;", rpmPrefix, path.Join(common.TmpWorkDirectory, pkg))
+		}
+	} else if svr == KeeperSvrName {
+		cmd += fmt.Sprintf("%s -ivh %s;", rpmPrefix, path.Join(common.TmpWorkDirectory, pkgs.Keeper))
 	}
 	return strings.TrimSuffix(cmd, ";")
 }
 
-func (p *RpmPkg) UpgradeCmd(pkgs []string) string {
+func (p *RpmPkg) UpgradeCmd(svr string, pkgs Packages) string {
 	var cmd string
-	for _, pkg := range pkgs {
-		cmd += fmt.Sprintf("%s -Uvh %s;", rpmPrefix, path.Join(common.TmpWorkDirectory, pkg))
+	if svr == CkSvrName {
+		for _, pkg := range pkgs.PkgLists {
+			cmd += fmt.Sprintf("%s -Uvh %s;", rpmPrefix, path.Join(common.TmpWorkDirectory, pkg))
+		}
+	} else if svr == KeeperSvrName {
+		cmd += fmt.Sprintf("%s -Uvh %s;", rpmPrefix, path.Join(common.TmpWorkDirectory, pkgs.Keeper))
 	}
 	return strings.TrimSuffix(cmd, ";")
 }
 
-func (p *RpmPkg) Uninstall(pkgs []string) string {
-	return "rpm -e " + strings.Join(pkgs, " ")
+func (p *RpmPkg) Uninstall(svr string, pkgs Packages, version string) string {
+	if svr == KeeperSvrName {
+		return fmt.Sprintf("rpm -e $(rpm -qa |grep clickhouse-keeper |grep %s)", version)
+	} else {
+		return fmt.Sprintf("rpm -e $(rpm -qa |grep clickhouse |grep %s)", version)
+	}
 }
-

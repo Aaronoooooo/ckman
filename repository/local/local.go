@@ -3,17 +3,19 @@ package local
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/housepower/ckman/common"
-	"github.com/housepower/ckman/log"
-	"github.com/housepower/ckman/model"
-	"github.com/housepower/ckman/repository"
-	"github.com/pkg/errors"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/housepower/ckman/common"
+	"github.com/housepower/ckman/config"
+	"github.com/housepower/ckman/log"
+	"github.com/housepower/ckman/model"
+	"github.com/housepower/ckman/repository"
+	"github.com/pkg/errors"
+	"gopkg.in/yaml.v3"
 )
 
 type LocalPersistent struct {
@@ -113,7 +115,7 @@ func (lp *LocalPersistent) GetLogicClusterbyName(logic string) ([]string, error)
 	if !ok {
 		return []string{}, repository.ErrRecordNotFound
 	}
-	return physics, nil
+	return common.ArrayDistinct(physics), nil
 }
 
 func (lp *LocalPersistent) GetAllClusters() (map[string]model.CKManClickHouseConfig, error) {
@@ -132,7 +134,7 @@ func (lp *LocalPersistent) GetAllLogicClusters() (map[string][]string, error) {
 	defer lp.lock.RUnlock()
 	logicMap := make(map[string][]string)
 	for key, value := range lp.Data.Logics {
-		logicMap[key] = value
+		logicMap[key] = common.ArrayDistinct(value)
 	}
 	return logicMap, nil
 }
@@ -157,7 +159,7 @@ func (lp *LocalPersistent) CreateLogicCluster(logic string, physics []string) er
 	if _, ok := lp.Data.Logics[logic]; ok {
 		return repository.ErrRecordExists
 	}
-	lp.Data.Logics[logic] = physics
+	lp.Data.Logics[logic] = common.ArrayDistinct(physics)
 	if !lp.InTransAction {
 		_ = lp.dump()
 	}
@@ -184,7 +186,7 @@ func (lp *LocalPersistent) UpdateLogicCluster(logic string, physics []string) er
 	if _, ok := lp.Data.Logics[logic]; !ok {
 		return repository.ErrRecordNotFound
 	}
-	lp.Data.Logics[logic] = physics
+	lp.Data.Logics[logic] = common.ArrayDistinct(physics)
 	if !lp.InTransAction {
 		_ = lp.dump()
 	}
@@ -218,7 +220,7 @@ func (lp *LocalPersistent) GetAllQueryHistory() (map[string]model.QueryHistory, 
 	for k, v := range lp.Data.QueryHistory {
 		historys[k] = v
 	}
-	return historys,nil
+	return historys, nil
 }
 
 func (lp *LocalPersistent) GetQueryHistoryByCluster(cluster string) ([]model.QueryHistory, error) {
@@ -231,15 +233,15 @@ func (lp *LocalPersistent) GetQueryHistoryByCluster(cluster string) ([]model.Que
 		}
 	}
 	sort.Sort(sort.Reverse(historys))
-	return historys,nil
+	return historys, nil
 }
 
-func (lp *LocalPersistent) GetQueryHistoryByCheckSum(checksum string)(model.QueryHistory, error){
+func (lp *LocalPersistent) GetQueryHistoryByCheckSum(checksum string) (model.QueryHistory, error) {
 	lp.lock.RLock()
 	defer lp.lock.RUnlock()
 	history, ok := lp.Data.QueryHistory[checksum]
 	if !ok {
-		return model.QueryHistory{},repository.ErrRecordNotFound
+		return model.QueryHistory{}, repository.ErrRecordNotFound
 	}
 	return history, nil
 }
@@ -350,11 +352,10 @@ func (lp *LocalPersistent) DeleteTask(id string) error {
 func (lp *LocalPersistent) GetAllTasks() ([]model.Task, error) {
 	lp.lock.RLock()
 	defer lp.lock.RUnlock()
-	var tasks Tasks
+	var tasks []model.Task
 	for _, value := range lp.Data.Task {
 		tasks = append(tasks, value)
 	}
-	sort.Sort(tasks)
 	return tasks, nil
 }
 
@@ -387,7 +388,7 @@ func (lp *LocalPersistent) GetTaskbyTaskId(id string) (model.Task, error) {
 	defer lp.lock.RUnlock()
 	task, ok := lp.Data.Task[id]
 	if !ok {
-		return model.Task{},repository.ErrRecordNotFound
+		return model.Task{}, repository.ErrRecordNotFound
 	}
 	return task, nil
 }
@@ -395,9 +396,9 @@ func (lp *LocalPersistent) GetTaskbyTaskId(id string) (model.Task, error) {
 func (lp *LocalPersistent) marshal() ([]byte, error) {
 	var data []byte
 	var err error
-	if lp.Config.Format == FORMAT_JSON {
+	if lp.Config.Format == config.FORMAT_JSON {
 		data, err = json.MarshalIndent(lp.Data, "", "  ")
-	} else if lp.Config.Format == FORMAT_YAML {
+	} else if lp.Config.Format == config.FORMAT_YAML {
 		data, err = yaml.Marshal(lp.Data)
 	}
 	if err != nil {
@@ -413,9 +414,9 @@ func (lp *LocalPersistent) unmarshal(data []byte) error {
 		return nil
 	}
 
-	if lp.Config.Format == FORMAT_JSON {
+	if lp.Config.Format == config.FORMAT_JSON {
 		err = json.Unmarshal(data, &lp.Data)
-	} else if lp.Config.Format == FORMAT_YAML {
+	} else if lp.Config.Format == config.FORMAT_YAML {
 		err = yaml.Unmarshal(data, &lp.Data)
 	}
 

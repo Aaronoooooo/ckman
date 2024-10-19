@@ -2,18 +2,21 @@ package server
 
 import (
 	"context"
+	"embed"
 	"fmt"
-	"github.com/go-errors/errors"
-	jsoniter "github.com/json-iterator/go"
-	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"time"
+
+	"github.com/go-errors/errors"
+	jsoniter "github.com/json-iterator/go"
 
 	"github.com/patrickmn/go-cache"
 
-	static "github.com/choidamdam/gin-static-pkger"
+	"github.com/arl/statsviz"
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"github.com/housepower/ckman/common"
@@ -22,8 +25,10 @@ import (
 	_ "github.com/housepower/ckman/docs"
 	"github.com/housepower/ckman/log"
 	"github.com/housepower/ckman/model"
+	"github.com/housepower/ckman/repository"
 	"github.com/housepower/ckman/router"
-	"github.com/markbates/pkger"
+	"github.com/housepower/ckman/server/enforce"
+	"github.com/housepower/ckman/service/prometheus"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/swaggo/gin-swagger/swaggerFiles"
 )
@@ -33,15 +38,17 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 const ENV_CKMAN_SWAGGER string = "ENV_CKMAN_SWAGGER"
 
 type ApiServer struct {
-	config      *config.CKManConfig
-	svr         *http.Server
-	signal      chan os.Signal
+	config *config.CKManConfig
+	svr    *http.Server
+	signal chan os.Signal
+	fs     embed.FS
 }
 
-func NewApiServer(config *config.CKManConfig, signal chan os.Signal) *ApiServer {
+func NewApiServer(config *config.CKManConfig, signal chan os.Signal, fs embed.FS) *ApiServer {
 	server := &ApiServer{}
 	server.config = config
 	server.signal = signal
+	server.fs = fs
 	return server
 }
 
@@ -53,15 +60,17 @@ func (server *ApiServer) Start() error {
 	r.Use(gin.CustomRecoveryWithWriter(nil, handlePanic))
 
 	controller.TokenCache = cache.New(time.Duration(server.config.Server.SessionTimeout)*time.Second, time.Minute)
-	userController := controller.NewUserController(server.config)
+	userController := controller.NewUserController(server.config, router.WrapMsg)
 
-	// https://github.com/gin-gonic/gin/issues/1048
-	// How do you solve vue.js HTML5 History Mode?
-	_ = pkger.Dir("/static/dist")
-	r.Use(static.Serve("/", static.LocalFile("/static/dist", false)))
-	homepage := embedStaticHandler("/static/dist/index.html", "text/html;charset=utf-8")
-	r.NoRoute(homepage)
-
+	r.Use(Serve("/", EmbedFolder(server.fs, "static/dist")))
+	r.NoRoute(func(c *gin.Context) {
+		data, err := server.fs.ReadFile("static/dist/index.html")
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+	})
 	if !server.config.Server.SwaggerEnable {
 		_ = os.Setenv(ENV_CKMAN_SWAGGER, "disabled")
 	} else {
@@ -75,21 +84,38 @@ func (server *ApiServer) Start() error {
 		pprof.Register(r)
 	}
 
+	// http://127.0.0.1:8808/debug/statsviz
+	r.GET("/debug/statsviz/*filepath", func(context *gin.Context) {
+		if context.Param("filepath") == "/ws" {
+			statsviz.Ws(context.Writer, context.Request)
+			return
+		}
+		statsviz.IndexAtRoot("/debug/statsviz").ServeHTTP(context.Writer, context.Request)
+	})
+
+	// prometheus http_sd_config
+	r.GET("discovery/:schema", PromHttpSD)
+
 	groupApi := r.Group("/api")
 	groupApi.POST("/login", userController.Login)
 	// add authenticate middleware for /api
+	common.LoadUsers(filepath.Dir(server.config.ConfigFile))
 	groupApi.Use(ginJWTAuth())
 	groupApi.Use(ginRefreshTokenExpires())
+	groupApi.Use(ginEnforce())
 	groupApi.PUT("/logout", userController.Logout)
 	groupV1 := groupApi.Group("/v1")
 	router.InitRouterV1(groupV1, server.config, server.signal)
 
+	groupV2 := groupApi.Group("/v2")
+	router.InitRouterV2(groupV2, server.config, server.signal)
+
 	bind := fmt.Sprintf(":%d", server.config.Server.Port)
 	server.svr = &http.Server{
 		Addr:         bind,
-		WriteTimeout: time.Second * 300,
-		ReadTimeout:  time.Second * 300,
-		IdleTimeout:  time.Second * 60,
+		WriteTimeout: time.Second * 3600,
+		ReadTimeout:  time.Second * 3600,
+		IdleTimeout:  time.Second * 3600,
 		Handler:      r,
 	}
 
@@ -117,26 +143,10 @@ func (server *ApiServer) Stop() error {
 	return server.svr.Shutdown(ctx)
 }
 
-func embedStaticHandler(embedPath, contentType string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		f, err := pkger.Open(embedPath)
-		if err != nil {
-			log.Logger.Errorf("failed to open embed static file %s", embedPath)
-			return
-		}
-		defer f.Close()
-		c.Status(http.StatusOK)
-		c.Header("Content-Type", contentType)
-		if _, err := io.Copy(c.Writer, f); err != nil {
-			log.Logger.Errorf("failed to copy embed static file %s", embedPath)
-		}
-	}
-}
-
 // Log runtime error stack to make debug easy.
 func handlePanic(c *gin.Context, err interface{}) {
 	log.Logger.Errorf("server panic: %+v\n%v", err, string(debug.Stack()))
-	model.WrapMsg(c, model.UNKNOWN, err)
+	router.WrapMsg(c, model.E_UNKNOWN, err)
 }
 
 // Replace gin.Logger middleware to customize log format.
@@ -183,7 +193,7 @@ func ginJWTAuth() gin.HandlerFunc {
 			var rsaEncrypt common.RSAEncryption
 			decode, err := rsaEncrypt.Decode([]byte(uEnc), config.GlobalConfig.Server.PublicKey)
 			if err != nil {
-				model.WrapMsg(c, model.JWT_TOKEN_INVALID, nil)
+				router.WrapMsg(c, model.E_JWT_TOKEN_INVALID, nil)
 				c.Abort()
 				return
 			}
@@ -191,51 +201,82 @@ func ginJWTAuth() gin.HandlerFunc {
 			var userToken common.UserTokenModel
 			err = json.Unmarshal(decode, &userToken)
 			if err != nil {
-				model.WrapMsg(c, model.JWT_TOKEN_INVALID, nil)
+				router.WrapMsg(c, model.E_JWT_TOKEN_INVALID, nil)
 				c.Abort()
 				return
 			}
 			if time.Now().UnixNano()/1e6-userToken.Timestamp > userToken.Duration*1000 {
-				model.WrapMsg(c, model.JWT_TOKEN_EXPIRED, nil)
+				router.WrapMsg(c, model.E_JWT_TOKEN_EXPIRED, nil)
 				c.Abort()
 				return
 			}
+			//c.Set("username", userToken.UserId)
+			c.Set("username", common.InternalOrdinaryName)
 			return
 		}
 
 		// jwt
 		token := c.Request.Header.Get("token")
 		if token == "" {
-			model.WrapMsg(c, model.JWT_TOKEN_NONE, nil)
+			router.WrapMsg(c, model.E_JWT_TOKEN_NONE, nil)
 			c.Abort()
 			return
 		}
 
 		j := common.NewJWT()
 		claims, code := j.ParserToken(token)
-		if code != model.SUCCESS {
-			model.WrapMsg(c, code, nil)
+		if code != model.E_SUCCESS {
+			router.WrapMsg(c, code, nil)
 			c.Abort()
 			return
 		}
 
 		// Verify Expires
 		if _, ok := controller.TokenCache.Get(token); !ok {
-			model.WrapMsg(c, model.JWT_TOKEN_EXPIRED, nil)
+			router.WrapMsg(c, model.E_JWT_TOKEN_EXPIRED, nil)
 			c.Abort()
 			return
 		}
 
 		// Verify client ip
+		// proxy with ngnix, will get client ip from x-forwarded-for
+		// refs: https://nginx.org/en/docs/http/ngx_http_realip_module.html
+		// refs: https://www.cnblogs.com/mypath/articles/5239687.html
+		/*
+			nginx config example:
+						server {
+				        	listen       80;
+				        	server_name  net.eoitek.ckman.com;
+
+				        	location / {
+				                        index  index.html index.htm;
+				                        proxy_pass http://192.168.110.8:8808;
+				                        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+				        	}
+				    }
+
+		*/
+		clientIps := c.Request.Header.Get("X-Forwarded-For")
+		if clientIps != "" {
+			clientIp := strings.Split(clientIps, ",")[0]
+			log.Logger.Debugf("maybe set proxy, the real ip is %s", clientIp)
+			if clientIp == claims.ClientIP {
+				c.Set("claims", claims)
+				c.Set("token", token)
+				c.Set("username", claims.Name)
+				return
+			}
+		}
 		if claims.ClientIP != c.ClientIP() {
 			err := errors.Errorf("cliams.ClientIP: %s, c.ClientIP:%s", claims.ClientIP, c.ClientIP())
-			model.WrapMsg(c, model.JWT_TOKEN_IP_MISMATCH, err)
+			router.WrapMsg(c, model.E_JWT_TOKEN_EXPIRED, err)
 			c.Abort()
 			return
 		}
 
 		c.Set("claims", claims)
 		c.Set("token", token)
+		c.Set("username", claims.Name)
 	}
 }
 
@@ -247,6 +288,47 @@ func ginRefreshTokenExpires() gin.HandlerFunc {
 			if token != "" {
 				controller.TokenCache.SetDefault(token, time.Now().Add(time.Second*time.Duration(config.GlobalConfig.Server.SessionTimeout)).Unix())
 			}
+		}
+	}
+}
+
+func PromHttpSD(c *gin.Context) {
+	var clusters []model.CKManClickHouseConfig
+	schema := c.Param("schema")
+	if schema != "clickhouse" && schema != "zookeeper" && schema != "node" {
+		router.WrapMsg(c, model.E_INVALID_PARAMS, fmt.Errorf("%s is not a valid schema", schema))
+		return
+	}
+	clusterName := c.Query("cluster")
+	if clusterName == "" {
+		all, err := repository.Ps.GetAllClusters()
+		if err != nil {
+			log.Logger.Error(err)
+			return
+		}
+		for _, v := range all {
+			clusters = append(clusters, v)
+		}
+	} else {
+		cluster, err := repository.Ps.GetClusterbyName(clusterName)
+		if err != nil {
+			log.Logger.Error(err)
+			return
+		}
+		clusters = append(clusters, cluster)
+	}
+	objs := prometheus.GetObjects(clusters)
+	c.JSON(http.StatusOK, objs[schema])
+}
+
+func ginEnforce() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		username := c.GetString("username")
+		ok := enforce.Enforce(username, c.Request.URL.RequestURI(), c.Request.Method)
+		if !ok {
+			err := fmt.Errorf("permission denied: username [%s]", username)
+			router.WrapMsg(c, model.E_USER_VERIFY_FAIL, err)
+			c.Abort()
 		}
 	}
 }

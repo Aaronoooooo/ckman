@@ -2,14 +2,15 @@ package common
 
 import (
 	"fmt"
-	"github.com/housepower/ckman/config"
-	"github.com/pkg/errors"
 	"os"
 	"path"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/housepower/ckman/config"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 	PkgModuleCommon string = "common"
 	PkgModuleClient string = "client"
 	PkgModuleServer string = "server"
+	PkgModuleKeeper string = "keeper"
 
 	PkgSuffixRpm string = "rpm"
 	PkgSuffixTgz string = "tgz"
@@ -107,7 +109,7 @@ func parsePkgName(fname string) CkPackageFile {
 				clickhouse-server-22.3.3.44-amd64.tgz
 			*/
 			version = fields[vidx]
-			arch = strings.Split(fields[vidx], ".")[0]
+			arch = strings.Split(fields[vidx+1], ".")[0]
 		} else if len(fields) == vidx+1 {
 			/*
 				clickhouse-common-static-22.3.2.2.tgz
@@ -132,7 +134,7 @@ func parsePkgName(fname string) CkPackageFile {
 	return file
 }
 
-func GetPackages() error {
+func LoadPackages() error {
 	var files CkPackageFiles
 	CkPackages.Range(func(k, v interface{}) bool {
 		CkPackages.Delete(k)
@@ -202,7 +204,7 @@ func GetPackages() error {
 
 func GetAllPackages() map[string]CkPackageFiles {
 	pkgs := make(map[string]CkPackageFiles, 0)
-	_ = GetPackages()
+	_ = LoadPackages()
 	CkPackages.Range(func(k, v interface{}) bool {
 		key := k.(string)
 		files := v.(CkPackageFiles)

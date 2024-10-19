@@ -3,6 +3,13 @@ package controller
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+
 	"github.com/gin-gonic/gin"
 	"github.com/housepower/ckman/common"
 	"github.com/housepower/ckman/config"
@@ -10,42 +17,40 @@ import (
 	"github.com/housepower/ckman/log"
 	"github.com/housepower/ckman/model"
 	"github.com/pkg/errors"
-	"io"
-	"mime/multipart"
-	"net/http"
-	"os"
-	"path"
-	"path/filepath"
 )
 
 const (
-	FormPackageFieldName    string = "package"
-	InitialByClusterPeer    string = "is_initial_by_cluster_peer"
+	FormPackageFieldName string = "package"
+	InitialByClusterPeer string = "is_initial_by_cluster_peer"
 )
 
 type PackageController struct {
+	Controller
 	config *config.CKManConfig
 }
 
-func NewPackageController(config *config.CKManConfig) *PackageController {
-	ck := &PackageController{}
-	ck.config = config
-	return ck
+func NewPackageController(config *config.CKManConfig, wrapfunc Wrapfunc) *PackageController {
+	pc := &PackageController{}
+	pc.config = config
+	pc.wrapfunc = wrapfunc
+	return pc
 }
 
-// @Summary Upload package
-// @Description Upload package
+// @Summary 上传安装包
+// @Description 需要同时上传三个包，包括client、server和common
 // @version 1.0
 // @Security ApiKeyAuth
+// @Tags package
+// @Accept  json
 // @accept multipart/form-data
 // @Param package formData file true "package"
-// @Failure 200 {string} json "{"retCode":"5004","retMsg":"upload local package failed","entity":""}"
-// @Success 200 {string} json "{"retCode":"0000","retMsg":"success","entity":null}"
-// @Router /api/v1/package [post]
-func (p *PackageController) Upload(c *gin.Context) {
+// @Failure 200 {string} json "{"code":"5202","msg":"upload local package failed","data":""}"
+// @Success 200 {string} json "{"code":"0000","msg":"success","data":null}"
+// @Router /api/v2/package [post]
+func (controller *PackageController) Upload(c *gin.Context) {
 	localFile, err := ParserFormData(c.Request)
 	if err != nil {
-		model.WrapMsg(c, model.UPLOAD_LOCAL_PACKAGE_FAIL, err)
+		controller.wrapfunc(c, model.E_UPLOAD_FAILED, err)
 		return
 	}
 
@@ -57,30 +62,30 @@ func (p *PackageController) Upload(c *gin.Context) {
 	if !reqFromPeer {
 		for _, peer := range config.GetClusterPeers() {
 			peerUrl := ""
-			if p.config.Server.Https {
+			if controller.config.Server.Https {
 				peerUrl = fmt.Sprintf("https://%s:%d/api/v1/package", peer.Ip, peer.Port)
 				err = UploadFileByURL(peerUrl, localFile)
 				if err != nil {
-					model.WrapMsg(c, model.UPLOAD_PEER_PACKAGE_FAIL, err)
+					controller.wrapfunc(c, model.E_UPLOAD_FAILED, err)
 					return
 				}
 			} else {
 				peerUrl = fmt.Sprintf("http://%s:%d/api/v1/package", peer.Ip, peer.Port)
 				err = UploadFileByURL(peerUrl, localFile)
 				if err != nil {
-					model.WrapMsg(c, model.UPLOAD_PEER_PACKAGE_FAIL, err)
+					controller.wrapfunc(c, model.E_UPLOAD_FAILED, err)
 					return
 				}
 			}
 		}
 	}
 
-	err = common.GetPackages()
+	err = common.LoadPackages()
 	if err != nil {
-		model.WrapMsg(c, model.UPLOAD_PEER_PACKAGE_FAIL, err)
+		controller.wrapfunc(c, model.E_UPLOAD_FAILED, err)
 		return
 	}
-	model.WrapMsg(c, model.SUCCESS, nil)
+	controller.wrapfunc(c, model.E_SUCCESS, nil)
 }
 
 func ParserFormData(request *http.Request) (string, error) {
@@ -162,18 +167,21 @@ func UploadFileByURL(url string, localFile string) error {
 	return nil
 }
 
-// @Summary Get package list
-// @Description Get package list
+// @Summary 获取安装包列表
+// @Description 获取安装包列表
 // @version 1.0
 // @Security ApiKeyAuth
-// @Failure 200 {string} json "{"retCode":"5005","retMsg":"get package list failed","entity":""}"
-// @Success 200 {string} json "{"retCode":"0000","retMsg":"ok","entity":["20.8.5.45"]}"
-// @Router /api/v1/package [get]
-func (p *PackageController) List(c *gin.Context) {
+// @Tags package
+// @Accept  json
+// @Param pkgType query string true "pkgType" default(all)
+// @Success 200 {string} json "{"code":"0000","msg":"ok","data":[{"version":"22.3.9.19","pkgType":"x86_64.rpm","pkgName":"clickhouse-common-static-22.3.9.19.x86_64.rpm"}]}"
+// @Router /api/v2/package [get]
+func (controller *PackageController) List(c *gin.Context) {
 	pkgType := c.Query("pkgType")
 	if pkgType == "" {
 		pkgType = model.PkgTypeDefault
 	}
+
 	pkgs := common.GetAllPackages()
 	var resp []model.PkgInfo
 	if pkgType == "all" {
@@ -188,7 +196,7 @@ func (p *PackageController) List(c *gin.Context) {
 			}
 		}
 	} else {
-		v, _ := pkgs[pkgType]
+		v := pkgs[pkgType]
 		for _, p := range v {
 			pi := model.PkgInfo{
 				Version: p.Version,
@@ -198,24 +206,29 @@ func (p *PackageController) List(c *gin.Context) {
 			resp = append(resp, pi)
 		}
 	}
-	model.WrapMsg(c, model.SUCCESS, resp)
+	controller.wrapfunc(c, model.E_SUCCESS, resp)
 }
 
-// @Summary Delete package
-// @Description Delete package
+// @Summary 删除安装包
+// @Description 删除安装包
 // @version 1.0
 // @Security ApiKeyAuth
-// @Param packageVersion query string true "package version" default(20.8.5.45)
-// @Failure 200 {string} json "{"retCode":"5002","retMsg":"delete local package failed","entity":""}"
-// @Success 200 {string} json "{"retCode":"0000","retMsg":"success","entity":null}"
-// @Router /api/v1/package [delete]
-func (p *PackageController) Delete(c *gin.Context) {
+// @Tags package
+// @Accept  json
+// @Param packageVersion query string true "package version" default(22.3.9.19)
+// @Param pkgType query string true "package type" default(x86_64.rpm)
+// @Failure 200 {string} json "{"code":"5201","msg":"文件不存在","data":""}"
+// @Failure 200 {string} json "{"code":"5803","msg":"删除数据失败","data":""}"
+// @Failure 200 {string} json "{"code":"5804","msg":"查询数据失败","data":""}"
+// @Success 200 {string} json "{"code":"0000","msg":"success","data":null}"
+// @Router /api/v2/package [delete]
+func (controller *PackageController) Delete(c *gin.Context) {
 	packageVersion := c.Query("packageVersion")
 	packageType := c.Query("pkgType")
-	packages := deploy.BuildPackages(packageVersion, packageType)
-	for _, packageName := range packages {
+	packages := deploy.BuildPackages(packageVersion, packageType, "")
+	for _, packageName := range packages.PkgLists {
 		if err := os.Remove(path.Join(config.GetWorkDirectory(), common.DefaultPackageDirectory, packageName)); err != nil {
-			model.WrapMsg(c, model.DELETE_LOCAL_PACKAGE_FAIL, err)
+			controller.wrapfunc(c, model.E_FILE_NOT_EXIST, err)
 			return
 		}
 	}
@@ -229,29 +242,30 @@ func (p *PackageController) Delete(c *gin.Context) {
 	if !reqFromPeer {
 		for _, peer := range config.GetClusterPeers() {
 			peerUrl := ""
-			if p.config.Server.Https {
-				peerUrl = fmt.Sprintf("https://%s:%d/api/v1/package?packageVersion=%s", peer.Ip, peer.Port, packageVersion)
+			if controller.config.Server.Https {
+				peerUrl = fmt.Sprintf("https://%s:%d/api/v1/package?packageVersion=%s&packageType=%s", peer.Ip, peer.Port, packageVersion, packageType)
 				err := DeleteFileByURL(peerUrl)
 				if err != nil {
-					model.WrapMsg(c, model.DELETE_PEER_PACKAGE_FAIL, err)
+					controller.wrapfunc(c, model.E_DATA_DELETE_FAILED, err)
 					return
 				}
 			} else {
-				peerUrl = fmt.Sprintf("http://%s:%d/api/v1/package?packageVersion=%s", peer.Ip, peer.Port, packageVersion)
+				peerUrl = fmt.Sprintf("http://%s:%d/api/v1/package?packageVersion=%s&packageType=%s", peer.Ip, peer.Port, packageVersion, packageType)
 				err := DeleteFileByURL(peerUrl)
 				if err != nil {
-					model.WrapMsg(c, model.DELETE_PEER_PACKAGE_FAIL, err)
+					controller.wrapfunc(c, model.E_DATA_DELETE_FAILED, err)
 					return
 				}
 			}
 		}
 	}
-	err := common.GetPackages()
+
+	err := common.LoadPackages()
 	if err != nil {
-		model.WrapMsg(c, model.DELETE_PEER_PACKAGE_FAIL, err)
+		controller.wrapfunc(c, model.E_DATA_SELECT_FAILED, err)
 		return
 	}
-	model.WrapMsg(c, model.SUCCESS, nil)
+	controller.wrapfunc(c, model.E_SUCCESS, nil)
 }
 
 func DeleteFileByURL(url string) error {

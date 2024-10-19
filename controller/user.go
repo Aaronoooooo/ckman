@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"os"
-	"path"
 	"path/filepath"
 	"time"
 
@@ -17,47 +15,44 @@ import (
 var TokenCache *cache.Cache
 
 type UserController struct {
+	Controller
 	config *config.CKManConfig
 }
 
-func NewUserController(config *config.CKManConfig) *UserController {
-	ck := &UserController{}
-	ck.config = config
-	return ck
+func NewUserController(config *config.CKManConfig, wrapfunc Wrapfunc) *UserController {
+	uc := &UserController{}
+	uc.config = config
+	uc.wrapfunc = wrapfunc
+	return uc
 }
 
-// @Summary Login
+// @Summary 用户登录
 // @Description Login
-// @version 1.0
+// @Security ApiKeyAuth
+// @Tags user
+// @Accept  json
 // @Param req body model.LoginReq true "request body"
-// @Failure 200 {string} json "{"retCode":"5000","retMsg":"invalid params","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5030","retMsg":"user verify failed","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5031","retMsg":"get user and password failed","entity":""}"
-// @Failure 200 {string} json "{"retCode":"5032","retMsg":"password verify failed","entity":""}"
-// @Success 200 {string} json "{"retCode":"0000","retMsg":"ok","entity":{"username":"ckman","token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"}}"
+// @Success 200 {string} json "{"retCode":"0000","retMsg":"成功","data":null}"
+// @Failure 200 {string} json "{"retCode":"5000", "retMsg":"参数错误", "data":null}"
+// @Failure 200 {string} json "{"retCode":"5030", "retMsg":"用户校验失败", "data":null}"
+// @Failure 200 {string} json "{"retCode":"5031", "retMsg":"密码校验失败", "data":null}"
 // @Router /api/login [post]
-func (d *UserController) Login(c *gin.Context) {
+func (controller *UserController) Login(c *gin.Context) {
 	var req model.LoginReq
 	c.Request.Header.Get("")
+	common.LoadUsers(filepath.Dir(controller.config.ConfigFile))
 	if err := model.DecodeRequestBody(c.Request, &req); err != nil {
-		model.WrapMsg(c, model.INVALID_PARAMS, err)
+		controller.wrapfunc(c, model.E_INVALID_PARAMS, err)
 		return
 	}
 
-	if req.Username != common.DefaultUserName {
-		model.WrapMsg(c, model.USER_VERIFY_FAIL, nil)
-		return
-	}
-
-	passwordFile := path.Join(filepath.Dir(d.config.ConfigFile), "password")
-	data, err := os.ReadFile(passwordFile)
+	userinfo, err := common.GetUserInfo(req.Username)
 	if err != nil {
-		model.WrapMsg(c, model.GET_USER_PASSWORD_FAIL, err)
+		controller.wrapfunc(c, model.E_USER_VERIFY_FAIL, err)
 		return
 	}
-
-	if pass := common.ComparePassword(string(data), req.Password); !pass {
-		model.WrapMsg(c, model.PASSWORD_VERIFY_FAIL, nil)
+	if pass := common.ComparePassword(userinfo.Password, req.Password); !pass {
+		controller.wrapfunc(c, model.E_PASSWORD_VERIFY_FAIL, nil)
 		return
 	}
 
@@ -67,12 +62,12 @@ func (d *UserController) Login(c *gin.Context) {
 			IssuedAt: time.Now().Unix(),
 			// ExpiresAt: time.Now().Add(time.Second * time.Duration(d.config.Server.SessionTimeout)).Unix(),
 		},
-		Name:     common.DefaultUserName,
+		Name:     req.Username,
 		ClientIP: c.ClientIP(),
 	}
 	token, err := j.CreateToken(claims)
 	if err != nil {
-		model.WrapMsg(c, model.CREAT_TOKEN_FAIL, err)
+		controller.wrapfunc(c, model.E_CREAT_TOKEN_FAIL, err)
 		return
 	}
 
@@ -80,23 +75,24 @@ func (d *UserController) Login(c *gin.Context) {
 		Username: req.Username,
 		Token:    token,
 	}
-	TokenCache.SetDefault(token, time.Now().Add(time.Second*time.Duration(d.config.Server.SessionTimeout)).Unix())
+	TokenCache.SetDefault(token, time.Now().Add(time.Second*time.Duration(controller.config.Server.SessionTimeout)).Unix())
 
-	model.WrapMsg(c, model.SUCCESS, rsp)
+	controller.wrapfunc(c, model.E_SUCCESS, rsp)
 }
 
-// @Summary Logout
+// @Summary 退出登录
 // @Description Logout
-// @version 1.0
 // @Security ApiKeyAuth
-// @Success 200 {string} json "{"retCode":"0000","retMsg":"success","entity":nil}"
+// @Tags user
+// @Accept  json
+// @Success 200 {string} json "{"retCode":"0000","retMsg":"成功","data":null}"
 // @Router /api/logout [put]
-func (d *UserController) Logout(c *gin.Context) {
+func (controller *UserController) Logout(c *gin.Context) {
 	if value, exists := c.Get("token"); exists {
 		token := value.(string)
 		TokenCache.Delete(token)
 		c.Set("token", "")
 	}
 
-	model.WrapMsg(c, model.SUCCESS, nil)
+	controller.wrapfunc(c, model.E_SUCCESS, nil)
 }
