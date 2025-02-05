@@ -25,8 +25,19 @@ var doc = `{
     "paths": {
         "/api/login": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "Login",
-                "summary": "Login",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "summary": "用户登录",
                 "parameters": [
                     {
                         "description": "request body",
@@ -40,7 +51,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":{\"username\":\"ckman\",\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\"}}",
+                        "description": "{\"retCode\":\"5031\", \"retMsg\":\"密码校验失败\", \"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -56,10 +67,16 @@ var doc = `{
                     }
                 ],
                 "description": "Logout",
-                "summary": "Logout",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "summary": "退出登录",
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":nil}",
+                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"成功\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -67,15 +84,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/archive/{clusterName}": {
+        "/api/v2/ck/archive/{clusterName}": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "archive tables to hdfs",
-                "summary": "Archive Tables to HDFS",
+                "description": "按时间段备份表数据",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "备份表",
                 "parameters": [
                     {
                         "description": "request body",
@@ -97,7 +120,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":\"\"}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":\"\"}",
                         "schema": {
                             "type": "string"
                         }
@@ -105,18 +128,24 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/cluster": {
+        "/api/v2/ck/cluster": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get ClickHouse cluster",
-                "summary": "Get config of all ClickHouse cluster",
+                "description": "获取所有集群的信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取所有集群信息",
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\", \"entity\":{\"test\":{\"mode\":\"import\",\"hosts\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\",\"192.168.0.4\"],\"names\":[\"node1\",\"node2\",\"node3\",\"node4\"],\"port\":9000,\"httpPort\":8123,\"user\":\"ck\",\"password\":\"123456\",\"database\":\"default\",\"cluster\":\"test\",\"zkNodes\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\"],\"zkPort\":2181,\"zkStatusPort\":8080,\"isReplica\":true,\"version\":\"20.8.5.45\",\"sshUser\":\"\",\"sshPassword\":\"\",\"shards\":[{\"replicas\":[{\"ip\":\"192.168.0.1\",\"hostname\":\"node1\"},{\"ip\":\"192.168.0.2\",\"hostname\":\"node2\"}]},{\"replicas\":[{\"ip\":\"192.168.0.3\",\"hostname\":\"node3\"},{\"ip\":\"192.168.0.4\",\"hostname\":\"node4\"}]}],\"path\":\"\"}}}",
+                        "description": "{\"code\":\"5804\",\"msg\":\"数据查询失败\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -129,8 +158,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Import a ClickHouse cluster",
-                "summary": "Import a ClickHouse cluster",
+                "description": "将一个已经存在的集群导入到ckman",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "导入集群",
                 "parameters": [
                     {
                         "description": "request body",
@@ -144,7 +179,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -152,15 +187,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/cluster/{clusterName}": {
+        "/api/v2/ck/cluster/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get config of a ClickHouse cluster",
-                "summary": "Get config of a ClickHouse cluster",
+                "description": "根据集群名获取集群的信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取指定的集群信息",
                 "parameters": [
                     {
                         "type": "string",
@@ -173,7 +214,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\", \"entity\":{\"mode\":\"import\",\"hosts\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\",\"192.168.0.4\"],\"names\":[\"node1\",\"node2\",\"node3\",\"node4\"],\"port\":9000,\"httpPort\":8123,\"user\":\"ck\",\"password\":\"123456\",\"database\":\"default\",\"cluster\":\"test\",\"zkNodes\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\"],\"zkPort\":2181,\"zkStatusPort\":8080,\"isReplica\":true,\"version\":\"20.8.5.45\",\"sshUser\":\"\",\"sshPassword\":\"\",\"shards\":[{\"replicas\":[{\"ip\":\"192.168.0.1\",\"hostname\":\"node1\"},{\"ip\":\"192.168.0.2\",\"hostname\":\"node2\"}]},{\"replicas\":[{\"ip\":\"192.168.0.3\",\"hostname\":\"node3\"},{\"ip\":\"192.168.0.4\",\"hostname\":\"node4\"}]}],\"path\":\"\"}}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\", \"data\":{\"mode\":\"import\",\"hosts\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\",\"192.168.0.4\"],\"names\":[\"node1\",\"node2\",\"node3\",\"node4\"],\"port\":9000,\"httpPort\":8123,\"user\":\"ck\",\"password\":\"123456\",\"database\":\"default\",\"cluster\":\"test\",\"zkNodes\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\"],\"zkPort\":2181,\"isReplica\":true,\"version\":\"20.8.5.45\",\"sshUser\":\"\",\"sshPassword\":\"\",\"shards\":[{\"replicas\":[{\"ip\":\"192.168.0.1\",\"hostname\":\"node1\"},{\"ip\":\"192.168.0.2\",\"hostname\":\"node2\"}]},{\"replicas\":[{\"ip\":\"192.168.0.3\",\"hostname\":\"node3\"},{\"ip\":\"192.168.0.4\",\"hostname\":\"node4\"}]}],\"path\":\"\"}}",
                         "schema": {
                             "type": "string"
                         }
@@ -186,8 +227,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Delete a ClickHouse cluster",
-                "summary": "Delete a ClickHouse cluster",
+                "description": "删除一个集群，但是并没有销毁该集群",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "删除集群",
                 "parameters": [
                     {
                         "type": "string",
@@ -200,7 +247,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":null}",
+                        "description": "{\"code\":\"5800\",\"msg\":\"数据查询失败\",\"data\":\"\"}",
                         "schema": {
                             "type": "string"
                         }
@@ -208,15 +255,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/config/{clusterName}": {
+        "/api/v2/ck/config/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "get cluster config",
-                "summary": "get cluster config",
+                "description": "获取集群配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取集群配置",
                 "parameters": [
                     {
                         "description": "request body",
@@ -238,7 +291,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":nil}",
                         "schema": {
                             "type": "string"
                         }
@@ -251,8 +304,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "update cluster config",
-                "summary": "cluster setting",
+                "description": "修改集群配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "修改集群配置",
                 "parameters": [
                     {
                         "description": "request body",
@@ -274,7 +333,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":nil}",
                         "schema": {
                             "type": "string"
                         }
@@ -282,15 +341,56 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/destroy/{clusterName}": {
+        "/api/v2/ck/ddl_queue/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "查询分布式DDL",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "查询分布式DDL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"startTime\":1609986493,\"queryDuration\":145,\"query\":\"select * from dist_sensor_dt_result_online limit 10000\",\"user\":\"default\",\"queryId\":\"8aa3de08-92c4-4102-a83d-2f5d88569dab\",\"address\":\"::1\",\"threads\":2}]}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/destroy/{clusterName}": {
             "put": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Destroy ClickHouse cluster",
-                "summary": "Destroy ClickHouse cluster",
+                "description": "销毁集群，删除所有数据，并卸载服务",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "销毁集群",
                 "parameters": [
                     {
                         "type": "string",
@@ -309,7 +409,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -317,51 +417,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/dist_logic_table/{clusterName}": {
-            "put": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Sync Logic Table Schema",
-                "summary": "SyncLogicTable",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "logic_test",
-                        "description": "cluster name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "request body",
-                        "name": "req",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.DistLogicTableReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":null}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            },
+        "/api/v2/ck/dist-logic-table/{clusterName}": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Create Distribute Table on logic cluster",
-                "summary": "Create Distribute Table on logic cluster",
+                "description": "创建逻辑表，如果某个物理集群上没有本地表，会同步创建",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "创建逻辑表",
                 "parameters": [
                     {
                         "type": "string",
@@ -383,7 +453,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -396,8 +466,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Delete Distribute Table on logic cluster",
-                "summary": "Delete Distribute Table on logic cluster",
+                "description": "删除逻辑表",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "删除逻辑表",
                 "parameters": [
                     {
                         "type": "string",
@@ -419,7 +495,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -427,15 +503,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/get/{clusterName}": {
+        "/api/v2/ck/get/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get ClickHouse cluster status",
-                "summary": "Get ClickHouse cluster status",
+                "description": "获取集群各个节点的状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取集群状态",
                 "parameters": [
                     {
                         "type": "string",
@@ -448,7 +530,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":{\"test\":{\"mode\":\"import\",\"hosts\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\",\"192.168.0.4\"],\"names\":[\"node1\",\"node2\",\"node3\",\"node4\"],\"port\":9000,\"httpPort\":8123,\"user\":\"ck\",\"password\":\"123456\",\"database\":\"default\",\"cluster\":\"test\",\"zkNodes\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\"],\"zkPort\":2181,\"zkStatusPort\":8080,\"isReplica\":true,\"version\":\"20.8.5.45\",\"sshUser\":\"\",\"sshPassword\":\"\",\"shards\":[{\"replicas\":[{\"ip\":\"192.168.0.1\",\"hostname\":\"node1\"},{\"ip\":\"192.168.0.2\",\"hostname\":\"node2\"}]},{\"replicas\":[{\"ip\":\"192.168.0.3\",\"hostname\":\"node3\"},{\"ip\":\"192.168.0.4\",\"hostname\":\"node4\"}]}],\"path\":\"\"}}}}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":{\"test\":{\"mode\":\"import\",\"hosts\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\",\"192.168.0.4\"],\"names\":[\"node1\",\"node2\",\"node3\",\"node4\"],\"port\":9000,\"httpPort\":8123,\"user\":\"ck\",\"password\":\"123456\",\"database\":\"default\",\"cluster\":\"test\",\"zkNodes\":[\"192.168.0.1\",\"192.168.0.2\",\"192.168.0.3\"],\"zkPort\":2181,\"isReplica\":true,\"version\":\"20.8.5.45\",\"sshUser\":\"\",\"sshPassword\":\"\",\"shards\":[{\"replicas\":[{\"ip\":\"192.168.0.1\",\"hostname\":\"node1\"},{\"ip\":\"192.168.0.2\",\"hostname\":\"node2\"}]},{\"replicas\":[{\"ip\":\"192.168.0.3\",\"hostname\":\"node3\"},{\"ip\":\"192.168.0.4\",\"hostname\":\"node4\"}]}],\"path\":\"\"}}}}",
                         "schema": {
                             "type": "string"
                         }
@@ -456,85 +538,153 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/node/start/{clusterName}": {
-            "put": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Start ClickHouse node",
-                "summary": "Start ClickHouse node",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "test",
-                        "description": "cluster name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "password",
-                        "name": "password",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/ck/node/stop/{clusterName}": {
-            "put": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Stop ClickHouse node",
-                "summary": "Stop ClickHouse node",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "test",
-                        "description": "cluster name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "password",
-                        "name": "password",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/ck/node/{clusterName}": {
+        "/api/v2/ck/node/log/{clusterName}": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Add ClickHouse node",
-                "summary": "Add ClickHouse node",
+                "description": "获取clickhouse日志",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取clickhouse日志",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "request body",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.GetLogReq"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "password",
+                        "name": "password",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/node/start/{clusterName}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "将集群内的某一个节点上线",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "上线节点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "password",
+                        "name": "password",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/node/stop/{clusterName}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "将集群内的某一个节点下线",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "下线节点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "password",
+                        "name": "password",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/node/{clusterName}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "增加集群节点，可对已有shard增加副本，也可直接增加新的shard",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "增加集群节点",
                 "parameters": [
                     {
                         "type": "string",
@@ -562,7 +712,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -575,8 +725,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Delete ClickHouse node",
-                "summary": "Delete ClickHouse node",
+                "description": "删除节点",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "删除节点",
                 "parameters": [
                     {
                         "type": "string",
@@ -603,7 +759,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -611,15 +767,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/open_sessions/{clusterName}": {
+        "/api/v2/ck/open-sessions/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get open sessions",
-                "summary": "Get open sessions",
+                "description": "查询正在进行的会话",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "查询正在进行的会话",
                 "parameters": [
                     {
                         "type": "string",
@@ -639,7 +801,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[{\"startTime\":1609997894,\"queryDuration\":1,\"query\":\"SELECT DISTINCT name FROM system.tables\",\"user\":\"eoi\",\"queryId\":\"62dce71d-9294-4e47-9d9b-cf298f73233d\",\"address\":\"192.168.21.73\",\"threads\":2}]}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"startTime\":1609997894,\"queryDuration\":1,\"query\":\"SELECT DISTINCT name FROM system.tables\",\"user\":\"eoi\",\"queryId\":\"62dce71d-9294-4e47-9d9b-cf298f73233d\",\"address\":\"192.168.21.73\",\"threads\":2}]}",
                         "schema": {
                             "type": "string"
                         }
@@ -652,8 +814,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Kill open sessions",
-                "summary": "Kill open sessions",
+                "description": "终止正在进行的会话",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "终止正在进行的会话",
                 "parameters": [
                     {
                         "type": "string",
@@ -665,15 +833,20 @@ var doc = `{
                     },
                     {
                         "type": "string",
-                        "default": "10",
-                        "description": "sessions limit",
-                        "name": "limit",
+                        "description": "host",
+                        "name": "host",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "query_id",
+                        "name": "query_id",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[{\"startTime\":1609997894,\"queryDuration\":1,\"query\":\"SELECT DISTINCT name FROM system.tables\",\"user\":\"eoi\",\"queryId\":\"62dce71d-9294-4e47-9d9b-cf298f73233d\",\"address\":\"192.168.21.73\",\"threads\":2}]}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"startTime\":1609997894,\"queryDuration\":1,\"query\":\"SELECT DISTINCT name FROM system.tables\",\"user\":\"eoi\",\"queryId\":\"62dce71d-9294-4e47-9d9b-cf298f73233d\",\"address\":\"192.168.21.73\",\"threads\":2}]}",
                         "schema": {
                             "type": "string"
                         }
@@ -681,15 +854,56 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/ping/{clusterName}": {
+        "/api/v2/ck/partition/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取分区信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取分区信息",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/ping/{clusterName}": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "check clickhousr server in cluster wether useful",
-                "summary": "Ping cluster",
+                "description": "探测集群是否可以正常对外提供服务",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "Ping集群是否健康",
                 "parameters": [
                     {
                         "description": "request body",
@@ -711,7 +925,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":nil}",
                         "schema": {
                             "type": "string"
                         }
@@ -719,15 +933,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/purge_tables/{clusterName}": {
+        "/api/v2/ck/purge-tables/{clusterName}": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "purger table",
-                "summary": "Purger Tables Range",
+                "description": "删除表某个时间范围内的数据",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "删除表某个时间范围内的数据",
                 "parameters": [
                     {
                         "description": "request body",
@@ -749,7 +969,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":\"\"}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":\"\"}",
                         "schema": {
                             "type": "string"
                         }
@@ -757,15 +977,124 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/query/{clusterName}": {
+        "/api/v2/ck/query-explain/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Query Info",
-                "summary": "Query Info",
+                "description": "查看执行计划",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "执行计划",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/query-history/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "SQL查询历史",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "SQL查询历史",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除查询历史",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "删除查询历史",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/query/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "查询SQL",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "查询SQL",
                 "parameters": [
                     {
                         "type": "string",
@@ -786,7 +1115,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[[\"name\"],[\"default\"],[\"system\"]]}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[[\"name\"],[\"default\"],[\"system\"]]}",
                         "schema": {
                             "type": "string"
                         }
@@ -794,15 +1123,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/query_explain/{clusterName}": {
+        "/api/v2/ck/query_export/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "get explain of query",
-                "summary": "QueryExplain",
+                "description": "查询SQL",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "查询SQL",
                 "parameters": [
                     {
                         "type": "string",
@@ -811,11 +1146,19 @@ var doc = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "show databases",
+                        "description": "sql",
+                        "name": "query",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":\"\"}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[[\"name\"],[\"default\"],[\"system\"]]}",
                         "schema": {
                             "type": "string"
                         }
@@ -823,71 +1166,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/query_history/{clusterName}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "get query history",
-                "summary": "QueryHistory",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "test",
-                        "description": "cluster name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":\"\"}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "delete query history",
-                "summary": "DeleteQuery",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "test",
-                        "description": "cluster name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":\"\"}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/ck/rebalance/{clusterName}": {
+        "/api/v2/ck/rebalance/{clusterName}": {
             "put": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Rebanlance a ClickHouse cluster",
-                "summary": "Rebanlance a ClickHouse cluster",
+                "description": "均衡集群，可以按照partition和shardingkey均衡，如果没有指定shardingkey，默认按照",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "均衡集群",
                 "parameters": [
                     {
                         "type": "string",
@@ -896,11 +1189,27 @@ var doc = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "request body",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.RebalanceTableReq"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "default": "true",
+                        "description": "if all = true, rebalance all tables, else only rebalance tables witch in requests",
+                        "name": "all",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -908,15 +1217,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/slow_sessions/{clusterName}": {
+        "/api/v2/ck/slow-sessions/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get slow sessions",
-                "summary": "Get slow sessions",
+                "description": "查询慢SQL",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "查询慢SQL",
                 "parameters": [
                     {
                         "type": "string",
@@ -948,7 +1263,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[{\"startTime\":1609986493,\"queryDuration\":145,\"query\":\"select * from dist_sensor_dt_result_online limit 10000\",\"user\":\"default\",\"queryId\":\"8aa3de08-92c4-4102-a83d-2f5d88569dab\",\"address\":\"::1\",\"threads\":2}]}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"startTime\":1609986493,\"queryDuration\":145,\"query\":\"select * from dist_sensor_dt_result_online limit 10000\",\"user\":\"default\",\"queryId\":\"8aa3de08-92c4-4102-a83d-2f5d88569dab\",\"address\":\"::1\",\"threads\":2}]}",
                         "schema": {
                             "type": "string"
                         }
@@ -956,15 +1271,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/start/{clusterName}": {
+        "/api/v2/ck/start/{clusterName}": {
             "put": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Start ClickHouse cluster",
-                "summary": "Start ClickHouse cluster",
+                "description": "启动集群里所有节点的ck服务，会跳过已经启动的节点",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "启动集群",
                 "parameters": [
                     {
                         "type": "string",
@@ -983,7 +1304,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -991,15 +1312,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/stop/{clusterName}": {
+        "/api/v2/ck/stop/{clusterName}": {
             "put": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Stop ClickHouse cluster",
-                "summary": "Stop ClickHouse cluster",
+                "description": "停止集群内所有节点，会跳过已经停止的节点",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "停止集群",
                 "parameters": [
                     {
                         "type": "string",
@@ -1018,7 +1345,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1026,15 +1353,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/table/{clusterName}": {
-            "get": {
+        "/api/v2/ck/table-all/{clusterName}": {
+            "delete": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Describe Table",
-                "summary": "Describe Table",
+                "description": "删除指定表及其所有关联表，包括本地表，分布式表，逻辑表，物化视图，本地聚合表，分布式聚合表，逻辑聚合表，聚合物化视图",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "删除指定表及其所有关联表，包括本地表，分布式表，逻辑表，物化视图， 本地聚合表，分布式聚合表，逻辑聚合表，聚合物化视图",
                 "parameters": [
                     {
                         "type": "string",
@@ -1063,7 +1396,541 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[{\"name\":\"_timestamp\",\"type\":\"DateTime\",\"defaultType\":\"\",\"defaultExpression\":\"\",\"comment\":\"\",\"codecExpression\":\"\",\"ttlExpression\":\"\"}]}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":null}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table-lists/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取所有的分布式表和逻辑表",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取分布式表List",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":{\\\"default\\\":{\\\"dist_centers\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_centers111\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_ckcenters\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_ckcenters2\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_centers\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_centers111\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_ckcenters\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_ckcenters2\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"]}}}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table-merges/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取表merge指标",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取表merge指标",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":{\"sensor_dt_result_online\":{\"columns\":22,\"rows\":1381742496,\"parts\":192,\"space\":54967700946,\"completedQueries\":5,\"failedQueries\":0,\"queryCost\":{\"middle\":130,\"secondaryMax\":160.76,\"max\":162}}}}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table-metric/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取标指标",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "获取表指标",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "default",
+                        "description": "filtered by database, if database is empty, select all databases",
+                        "name": "database",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "columns,partitions,parts,compressed,uncompressed,is_readonly,queries,cost",
+                        "description": "return columns, if columns is empty, return all columns",
+                        "name": "columns",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":{\"sensor_dt_result_online\":{\"columns\":22,\"rows\":1381742496,\"parts\":192,\"space\":54967700946,\"completedQueries\":5,\"failedQueries\":0,\"queryCost\":{\"middle\":130,\"secondaryMax\":160.76,\"max\":162}}}}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table-schema/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "查看建表语句",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "查看建表语句",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":\"{\\\"create_table_query\\\": \\\"CREATE TABLE default.apache_access_log (` + "`" + `@collectiontime` + "`" + ` DateTime, ` + "`" + `@hostname` + "`" + ` LowCardinality(String), ` + "`" + `@ip` + "`" + ` LowCardinality(String), ` + "`" + `@path` + "`" + ` String, ` + "`" + `@lineno` + "`" + ` Int64, ` + "`" + `@message` + "`" + ` String, ` + "`" + `agent` + "`" + ` String, ` + "`" + `auth` + "`" + ` String, ` + "`" + `bytes` + "`" + ` Int64, ` + "`" + `clientIp` + "`" + ` String, ` + "`" + `device_family` + "`" + ` LowCardinality(String), ` + "`" + `httpversion` + "`" + ` LowCardinality(String), ` + "`" + `ident` + "`" + ` String, ` + "`" + `os_family` + "`" + ` LowCardinality(String), ` + "`" + `os_major` + "`" + ` LowCardinality(String), ` + "`" + `os_minor` + "`" + ` LowCardinality(String), ` + "`" + `referrer` + "`" + ` String, ` + "`" + `request` + "`" + ` String, ` + "`" + `requesttime` + "`" + ` Float64, ` + "`" + `response` + "`" + ` LowCardinality(String), ` + "`" + `timestamp` + "`" + ` DateTime64(3), ` + "`" + `userAgent_family` + "`" + ` LowCardinality(String), ` + "`" + `userAgent_major` + "`" + ` LowCardinality(String), ` + "`" + `userAgent_minor` + "`" + ` LowCardinality(String), ` + "`" + `verb` + "`" + ` LowCardinality(String), ` + "`" + `xforwardfor` + "`" + ` LowCardinality(String)) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/default/apache_access_log', '{replica}') PARTITION BY toYYYYMMDD(timestamp) ORDER BY (timestamp, ` + "`" + `@hostname` + "`" + `, ` + "`" + `@path` + "`" + `, ` + "`" + `@lineno` + "`" + `) SETTINGS index_granularity = 8192 │ ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/default/apache_access_log', '{replica}') PARTITION BY toYYYYMMDD(timestamp) ORDER BY (timestamp, ` + "`" + `@hostname` + "`" + `, ` + "`" + `@path` + "`" + `, ` + "`" + `@lineno` + "`" + `) SETTINGS index_granularity = 8192\\\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table/dml/{clusterName}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新/删除表中的数据",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "更新/删除表中的数据",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "request body",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.DMLOnLogicReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5809\",\"msg\":\"修改表失败\",\"data\":null}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table/group-uniq-array/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "查询groupUniqArray聚合视图，拿到指定",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "查询groupUniqArray聚合视图",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5804\",\"msg\":\"数据查询失败\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "使用groupUniqArray创建本地聚合表，本地物化视图，分布式聚合表，分布式视图",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "使用groupUniqArray创建本地聚合表，本地物化视图，分布式聚合表，分布式视图",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "request body",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.GroupUniqArrayReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5808\",\"msg\":\"创建表失败\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Delete Materialized View with groupUniqArray",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "DelGroupUniqArray",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5810\",\"msg\":\"删除表失败\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table/orderby/{clusterName}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "修改表的order by字段，顺序",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "修改表order by字段",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "request body",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.OrderbyReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5809\",\"msg\":\"修改表失败\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table/readonly/{clusterName}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "恢复表只读状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "修复表只读状态",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5814\",\"msg\":\"恢复表失败\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table/ttl/{clusterName}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "修改表TTL",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "修改表TTL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "request body",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.AlterTblsTTLReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5809\",\"msg\":\"修改表失败\",\"data\":null}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table/view/{clusterName}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "创建/修改物化视图",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "创建/修改物化视图",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "request body",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.MaterializedViewReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"5809\",\"msg\":\"修改表失败\",\"data\":\"\"}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/ck/table/{clusterName}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "描述表的schema",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "描述表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "test",
+                        "description": "cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "default",
+                        "description": "database name",
+                        "name": "database",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "test_table",
+                        "description": "table name",
+                        "name": "tableName",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "test_table",
+                        "description": "table name",
+                        "name": "tableName",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"name\":\"_timestamp\",\"type\":\"DateTime\",\"defaultType\":\"\",\"defaultExpression\":\"\",\"comment\":\"\",\"codecExpression\":\"\",\"ttlExpression\":\"\"}]}",
                         "schema": {
                             "type": "string"
                         }
@@ -1076,8 +1943,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Alter Table",
-                "summary": "Alter Table",
+                "description": "修改表schema",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "修改表",
                 "parameters": [
                     {
                         "type": "string",
@@ -1099,7 +1972,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"5003\",\"retMsg\":\"alter ClickHouse table failed\",\"entity\":\"\"}",
+                        "description": "{\"code\":\"5809\",\"msg\":\"修改表失败\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1112,8 +1985,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Create Table",
-                "summary": "Create Table",
+                "description": "在集群上创建本地表和分布式表",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "创建表",
                 "parameters": [
                     {
                         "type": "string",
@@ -1135,7 +2014,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1148,8 +2027,14 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Delete Table",
-                "summary": "Delete Table",
+                "description": "删除本地表以及分布式表",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "删除表",
                 "parameters": [
                     {
                         "type": "string",
@@ -1178,7 +2063,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1186,15 +2071,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/table_lists/{clusterName}": {
-            "get": {
+        "/api/v2/ck/truncate-table/{clusterName}": {
+            "delete": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "get table lists config",
-                "summary": "get table lists",
+                "description": "清空表数据",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "清空表",
                 "parameters": [
                     {
                         "type": "string",
@@ -1203,78 +2094,20 @@ var doc = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":{\\\"default\\\":{\\\"dist_centers\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_centers111\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_ckcenters\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_ckcenters2\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_centers\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_centers111\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_ckcenters\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"],\\\"dist_logic_ckcenters2\\\":[\\\"@message\\\",\\\"@topic\\\",\\\"@@id\\\",\\\"@rownumber\\\",\\\"@ip\\\",\\\"@collectiontime\\\",\\\"@hostname\\\",\\\"@path\\\",\\\"@timestamp\\\",\\\"@storageTime\\\"]}}}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/ck/table_metric/{clusterName}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Get metrics of MergeTree in ClickHouse",
-                "summary": "Get metrics of MergeTree in ClickHouse",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "test",
-                        "description": "cluster name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":{\"sensor_dt_result_online\":{\"columns\":22,\"rows\":1381742496,\"parts\":192,\"space\":54967700946,\"completedQueries\":5,\"failedQueries\":0,\"queryCost\":{\"middle\":130,\"secondaryMax\":160.76,\"max\":162}}}}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/ck/table_schema/{clusterName}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "show create table",
-                "summary": "show create table",
-                "parameters": [
+                    },
                     {
                         "description": "request body",
                         "name": "req",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/model.ArchiveTableReq"
+                            "$ref": "#/definitions/model.AlterCkTableReq"
                         }
-                    },
-                    {
-                        "type": "string",
-                        "default": "test",
-                        "description": "cluster name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":\"{\\\"create_table_query\\\": \\\"CREATE TABLE default.apache_access_log (` + "`" + `@collectiontime` + "`" + ` DateTime, ` + "`" + `@hostname` + "`" + ` LowCardinality(String), ` + "`" + `@ip` + "`" + ` LowCardinality(String), ` + "`" + `@path` + "`" + ` String, ` + "`" + `@lineno` + "`" + ` Int64, ` + "`" + `@message` + "`" + ` String, ` + "`" + `agent` + "`" + ` String, ` + "`" + `auth` + "`" + ` String, ` + "`" + `bytes` + "`" + ` Int64, ` + "`" + `clientIp` + "`" + ` String, ` + "`" + `device_family` + "`" + ` LowCardinality(String), ` + "`" + `httpversion` + "`" + ` LowCardinality(String), ` + "`" + `ident` + "`" + ` String, ` + "`" + `os_family` + "`" + ` LowCardinality(String), ` + "`" + `os_major` + "`" + ` LowCardinality(String), ` + "`" + `os_minor` + "`" + ` LowCardinality(String), ` + "`" + `referrer` + "`" + ` String, ` + "`" + `request` + "`" + ` String, ` + "`" + `requesttime` + "`" + ` Float64, ` + "`" + `response` + "`" + ` LowCardinality(String), ` + "`" + `timestamp` + "`" + ` DateTime64(3), ` + "`" + `userAgent_family` + "`" + ` LowCardinality(String), ` + "`" + `userAgent_major` + "`" + ` LowCardinality(String), ` + "`" + `userAgent_minor` + "`" + ` LowCardinality(String), ` + "`" + `verb` + "`" + ` LowCardinality(String), ` + "`" + `xforwardfor` + "`" + ` LowCardinality(String)) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/default/apache_access_log', '{replica}') PARTITION BY toYYYYMMDD(timestamp) ORDER BY (timestamp, ` + "`" + `@hostname` + "`" + `, ` + "`" + `@path` + "`" + `, ` + "`" + `@lineno` + "`" + `) SETTINGS index_granularity = 8192 │ ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/default/apache_access_log', '{replica}') PARTITION BY toYYYYMMDD(timestamp) ORDER BY (timestamp, ` + "`" + `@hostname` + "`" + `, ` + "`" + `@path` + "`" + `, ` + "`" + `@lineno` + "`" + `) SETTINGS index_granularity = 8192\\\"}",
+                        "description": "{\"code\":\"5803\",\"msg\":\"数据删除失败\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1282,15 +2115,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ck/upgrade/{clusterName}": {
+        "/api/v2/ck/upgrade/{clusterName}": {
             "put": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Upgrade ClickHouse cluster",
-                "summary": "Upgrade ClickHouse cluster",
+                "description": "升级集群，支持全量升级和滚动升级",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clickhouse"
+                ],
+                "summary": "升级集群",
                 "parameters": [
                     {
                         "type": "string",
@@ -1318,7 +2157,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1326,15 +2165,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/deploy/ck": {
+        "/api/v2/deploy/ck": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Deploy clickhouse",
-                "summary": "Deploy clickhouse",
+                "description": "使用ckman创建集群",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "deploy"
+                ],
+                "summary": "创建集群",
                 "parameters": [
                     {
                         "description": "request body",
@@ -1348,7 +2193,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":nil}",
                         "schema": {
                             "type": "string"
                         }
@@ -1356,52 +2201,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/metric/query/{clusterName}": {
+        "/api/v2/metric/query-range/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Query",
-                "summary": "Query",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "ClickHouseMetrics_Read",
-                        "description": "metric name",
-                        "name": "metric",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "default": "1606290000",
-                        "description": "metric time",
-                        "name": "time",
-                        "in": "query",
-                        "required": true
-                    }
+                "description": "通过PromQL查询范围指标，可指定时间段",
+                "consumes": [
+                    "application/json"
                 ],
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[{\"metric\":{\"__name__\":\"ClickHouseMetrics_Read\",\"instance\":\"192.168.101.105:9363\",\"job\":\"clickhouse_exporter\"},\"value\":[1606290000,\"2\"]}]}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/metric/query_range/{clusterName}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
+                "tags": [
+                    "metrics"
                 ],
-                "description": "Query Range",
-                "summary": "Query Range",
+                "summary": "查询范围指标",
                 "parameters": [
                     {
                         "type": "string",
@@ -1438,7 +2252,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[{\"metric\":{\"__name__\":\"ClickHouseMetrics_Read\",\"instance\":\"192.168.101.105:9363\",\"job\":\"clickhouse_exporter\"},\"values\":[[1606290000,\"2\"],[1606290060,\"2\"],[1606290120,\"2\"]]}]}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"metric\":{\"__name__\":\"ClickHouseMetrics_Read\",\"instance\":\"192.168.101.105:9363\",\"job\":\"clickhouse_exporter\"},\"values\":[[1606290000,\"2\"],[1606290060,\"2\"],[1606290120,\"2\"]]}]}",
                         "schema": {
                             "type": "string"
                         }
@@ -1446,18 +2260,77 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/package": {
+        "/api/v2/metric/query/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get package list",
-                "summary": "Get package list",
+                "description": "通过promQL查询性能指标",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "metrics"
+                ],
+                "summary": "查询性能指标",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "ClickHouseMetrics_Read",
+                        "description": "metric name",
+                        "name": "metric",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "1606290000",
+                        "description": "metric time",
+                        "name": "time",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[\"20.8.5.45\"]}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"metric\":{\"__name__\":\"ClickHouseMetrics_Read\",\"instance\":\"192.168.101.105:9363\",\"job\":\"clickhouse_exporter\"},\"value\":[1606290000,\"2\"]}]}",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/package": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取安装包列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "package"
+                ],
+                "summary": "获取安装包列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "all",
+                        "description": "pkgType",
+                        "name": "pkgType",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":[{\"version\":\"22.3.9.19\",\"pkgType\":\"x86_64.rpm\",\"pkgName\":\"clickhouse-common-static-22.3.9.19.x86_64.rpm\"}]}",
                         "schema": {
                             "type": "string"
                         }
@@ -1470,11 +2343,15 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Upload package",
+                "description": "需要同时上传三个包，包括client、server和common",
                 "consumes": [
+                    "application/json",
                     "multipart/form-data"
                 ],
-                "summary": "Upload package",
+                "tags": [
+                    "package"
+                ],
+                "summary": "上传安装包",
                 "parameters": [
                     {
                         "type": "file",
@@ -1486,7 +2363,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1499,21 +2376,35 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Delete package",
-                "summary": "Delete package",
+                "description": "删除安装包",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "package"
+                ],
+                "summary": "删除安装包",
                 "parameters": [
                     {
                         "type": "string",
-                        "default": "20.8.5.45",
+                        "default": "22.3.9.19",
                         "description": "package version",
                         "name": "packageVersion",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "x86_64.rpm",
+                        "description": "package type",
+                        "name": "pkgType",
                         "in": "query",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":null}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1521,18 +2412,24 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/task/lists": {
+        "/api/v2/task/lists": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get all tasklist",
-                "summary": "TasksList",
+                "description": "获取所有的任务列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "获取任务列表",
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":[{\\\"TaskId\\\":\\\"608e9e83-715e-7448-a149-9bef33f38cfe\\\",\\\"ClusterName\\\":\\\"usertest\\\",\\\"Type\\\":\\\"clickhouse\\\",\\\"Option\\\":{\\\"ZH\\\":\\\"升级集群\\\",\\\"EN\\\":\\\"Upgrade\\\"},\\\"Status\\\":\\\"Success\\\",\\\"Message\\\":\\\"Success\\\",\\\"CreateTime\\\":\\\"2022-08-15T10:38:52.319504494+08:00\\\",\\\"UpdateTime\\\":\\\"2022-08-15T10:39:22.177215927+08:00\\\",\\\"Duration\\\":\\\"29s\\\"},{\\\"TaskId\\\":\\\"c6ee8843-36ba-4c88-94dd-0f226cdf8377\\\",\\\"ClusterName\\\":\\\"abc\\\",\\\"Type\\\":\\\"clickhouse\\\",\\\"Option\\\":{\\\"ZH\\\":\\\"设置集群\\\",\\\"EN\\\":\\\"Setting\\\"},\\\"Status\\\":\\\"Success\\\",\\\"Message\\\":\\\"Success\\\",\\\"CreateTime\\\":\\\"2022-08-09T14:28:00.697211511+08:00\\\",\\\"UpdateTime\\\":\\\"2022-08-09T14:28:59.887673161+08:00\\\",\\\"Duration\\\":\\\"59s\\\"}]}",
                         "schema": {
                             "type": "string"
                         }
@@ -1540,18 +2437,24 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/task/running": {
+        "/api/v2/task/running": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get running task count",
-                "summary": "GetRunningTaskCount",
+                "description": "获取正在运行的任务个数",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "获取正在运行的任务个数",
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":3}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":3}",
                         "schema": {
                             "type": "string"
                         }
@@ -1559,18 +2462,25 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/task/{taskId}": {
+        "/api/v2/task/{taskId}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get task by taskId",
-                "summary": "GetTaskById",
+                "description": "根据任务ID获取任务状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "获取任务状态",
                 "parameters": [
                     {
                         "type": "string",
+                        "default": "608e9e83-715e-7448-a149-9bef33f38cfe",
                         "description": "task id",
                         "name": "taskId",
                         "in": "query",
@@ -1579,7 +2489,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"data\":{\\\"TaskId\\\":\\\"608e9e83-715e-7448-a149-9bef33f38cfe\\\",\\\"ClusterName\\\":\\\"usertest\\\",\\\"Type\\\":\\\"clickhouse\\\",\\\"Option\\\":{\\\"ZH\\\":\\\"升级集群\\\",\\\"EN\\\":\\\"Upgrade\\\"},\\\"NodeStatus\\\":[{\\\"Host\\\":\\\"192.168.110.10\\\",\\\"Status\\\":{\\\"ZH\\\":\\\"上传安装包\\\",\\\"EN\\\":\\\"Prepare\\\"}},{\\\"Host\\\":\\\"192.168.110.12\\\",\\\"Status\\\":{\\\"ZH\\\":\\\"上传安装包\\\",\\\"EN\\\":\\\"Prepare\\\"}},{\\\"Host\\\":\\\"192.168.110.14\\\",\\\"Status\\\":{\\\"ZH\\\":\\\"上传安装包\\\",\\\"EN\\\":\\\"Prepare\\\"}}]}}",
                         "schema": {
                             "type": "string"
                         }
@@ -1592,11 +2502,27 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "stop task by taskid",
-                "summary": "StopTask",
+                "description": "停止指定的任务，注意该动作只是修改了任务状态，实际任务并没有停止",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "停止任务",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "608e9e83-715e-7448-a149-9bef33f38cfe",
+                        "description": "taskId",
+                        "name": "taskId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"msg\":nil}",
                         "schema": {
                             "type": "string"
                         }
@@ -1609,11 +2535,27 @@ var doc = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "delete task by taskid",
-                "summary": "DeleteTask",
+                "description": "根据任务ID删除指定的任务",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "删除任务",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "608e9e83-715e-7448-a149-9bef33f38cfe",
+                        "description": "taskId",
+                        "name": "taskId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"success\",\"entity\":nil}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"success\",\"msg\":nil}",
                         "schema": {
                             "type": "string"
                         }
@@ -1621,53 +2563,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/ui/schema": {
+        "/api/v2/zk/replicated-table/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get ui schema",
-                "summary": "Get ui schema",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/version": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
+                "description": "获取ReplicatedMergeTree表的log_pointer状态",
+                "consumes": [
+                    "application/json"
                 ],
-                "description": "Get Version",
-                "summary": "Get Version",
-                "responses": {
-                    "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":\"v1.3.1\"}",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/zk/replicated_table/{clusterName}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
+                "tags": [
+                    "zookeeper"
                 ],
-                "description": "Get replicated table in Zookeeper status",
-                "summary": "Get replicated table in  Zookeeper status",
+                "summary": "获取复制表状态",
                 "parameters": [
                     {
                         "type": "string",
@@ -1680,7 +2590,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":{\"header\":[[\"vm101106\",\"vm101108\"],[\"vm102114\",\"vm101110\"],[\"vm102116\",\"vm102115\"]],\"tables\":[{\"name\":\"sensor_dt_result_online\",\"values\":[[\"l1846\",\"f1846\"],[\"l1845\",\"f1845\"],[\"l1846\",\"f1846\"]]}]}}",
+                        "description": "{\"code\":\"0000\",\"msg\":\"ok\",\"data\":{\"header\":[[\"vm101106\",\"vm101108\"],[\"vm102114\",\"vm101110\"],[\"vm102116\",\"vm102115\"]],\"tables\":[{\"name\":\"sensor_dt_result_online\",\"values\":[[\"l1846\",\"f1846\"],[\"l1845\",\"f1845\"],[\"l1846\",\"f1846\"]]}]}}",
                         "schema": {
                             "type": "string"
                         }
@@ -1688,15 +2598,21 @@ var doc = `{
                 }
             }
         },
-        "/api/v1/zk/status/{clusterName}": {
+        "/api/v2/zk/status/{clusterName}": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get Zookeeper cluster status",
-                "summary": "Get Zookeeper cluster status",
+                "description": "访问8080端口，获取mntr信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "zookeeper"
+                ],
+                "summary": "获取zookeeper状态",
                 "parameters": [
                     {
                         "type": "string",
@@ -1709,7 +2625,7 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{\"retCode\":\"0000\",\"retMsg\":\"ok\",\"entity\":[{\"host\":\"192.168.102.116\",\"version\":\"3.6.2\",\"server_state\":\"follower\",\"peer_state\":\"following - broadcast\",\"avg_latency\":0.4929,\"approximate_data_size\":141979,\"znode_count\":926}]}",
+                        "description": "{\"code\":\"5080\",\"msg\":\"get zk status fail\",\"data\":null}",
                         "schema": {
                             "type": "string"
                         }
@@ -1747,9 +2663,18 @@ var doc = `{
                         "$ref": "#/definitions/model.CkTableNameTypeAfter"
                     }
                 },
+                "add_indexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Index"
+                    }
+                },
                 "database": {
                     "type": "string",
                     "example": "default"
+                },
+                "dist_name": {
+                    "type": "string"
                 },
                 "drop": {
                     "type": "array",
@@ -1759,6 +2684,12 @@ var doc = `{
                     "example": [
                         "age"
                     ]
+                },
+                "drop_indexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Index"
+                    }
                 },
                 "modify": {
                     "type": "array",
@@ -1770,6 +2701,46 @@ var doc = `{
                     "type": "string",
                     "example": "test_table"
                 },
+                "projections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Projection"
+                    }
+                },
+                "rename": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.CkTableRename"
+                    }
+                }
+            }
+        },
+        "model.AlterTblTTL": {
+            "type": "object",
+            "properties": {
+                "database": {
+                    "type": "string",
+                    "example": "default"
+                },
+                "distName": {
+                    "type": "string",
+                    "example": "distt1"
+                },
+                "tableName": {
+                    "type": "string",
+                    "example": "t1"
+                }
+            }
+        },
+        "model.AlterTblsTTLReq": {
+            "type": "object",
+            "properties": {
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.AlterTblTTL"
+                    }
+                },
                 "ttl": {
                     "type": "array",
                     "items": {
@@ -1777,7 +2748,64 @@ var doc = `{
                     }
                 },
                 "ttl_type": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "MODIFY"
+                }
+            }
+        },
+        "model.ArchiveHdfs": {
+            "type": "object",
+            "properties": {
+                "addr": {
+                    "type": "string",
+                    "example": "localhost:8020"
+                },
+                "dir": {
+                    "type": "string",
+                    "example": "/data01"
+                },
+                "user": {
+                    "type": "string",
+                    "example": "hdfs"
+                }
+            }
+        },
+        "model.ArchiveLocal": {
+            "type": "object",
+            "properties": {
+                "Path": {
+                    "type": "string",
+                    "example": "/data01/clickhouse/backup/"
+                }
+            }
+        },
+        "model.ArchiveS3": {
+            "type": "object",
+            "properties": {
+                "AccessKeyID": {
+                    "type": "string",
+                    "example": "KZOqVTra982w51MK"
+                },
+                "Bucket": {
+                    "type": "string",
+                    "example": "ckman.backup"
+                },
+                "Compression": {
+                    "description": "none, gzip/gz, brotli/br, xz/LZMA, zstd/zst",
+                    "type": "string",
+                    "example": "gzip"
+                },
+                "Endpoint": {
+                    "type": "string",
+                    "example": "http://192.168.110.8:49000"
+                },
+                "Region": {
+                    "type": "string",
+                    "example": "zh-west-1"
+                },
+                "SecretAccessKey": {
+                    "type": "string",
+                    "example": "7Zsdaywu7i5C2AyvLkbupSyVlIzP8qJ0"
                 }
             }
         },
@@ -1785,6 +2813,7 @@ var doc = `{
             "type": "object",
             "properties": {
                 "begin": {
+                    "description": "include",
                     "type": "string",
                     "example": "2021-01-01"
                 },
@@ -1793,28 +2822,26 @@ var doc = `{
                     "example": "default"
                 },
                 "end": {
+                    "description": "exclude",
                     "type": "string",
                     "example": "2021-04-01"
                 },
-                "hdfsaddr": {
-                    "type": "string",
-                    "example": "localhost:8020"
+                "format": {
+                    "description": "pq, csv, orc",
+                    "type": "string"
                 },
-                "hdfsdir": {
-                    "type": "string",
-                    "example": "/data01"
+                "hdfs": {
+                    "$ref": "#/definitions/model.ArchiveHdfs"
                 },
-                "hdfsuser": {
-                    "type": "string",
-                    "example": "hdfs"
+                "local": {
+                    "$ref": "#/definitions/model.ArchiveLocal"
                 },
                 "maxfilesize": {
                     "type": "integer",
                     "example": 10000000000
                 },
-                "parallelism": {
-                    "type": "integer",
-                    "example": 4
+                "s3": {
+                    "$ref": "#/definitions/model.ArchiveS3"
                 },
                 "tables": {
                     "type": "array",
@@ -1826,6 +2853,11 @@ var doc = `{
                         "t2",
                         "t3"
                     ]
+                },
+                "target": {
+                    "description": "hdfs, local, remote",
+                    "type": "string",
+                    "example": "hdfs"
                 }
             }
         },
@@ -1839,6 +2871,14 @@ var doc = `{
                 "cluster": {
                     "type": "string",
                     "example": "test"
+                },
+                "comment": {
+                    "type": "string",
+                    "example": "test"
+                },
+                "cwd": {
+                    "type": "string",
+                    "example": "/home/eoi/clickhouse"
                 },
                 "expert": {
                     "type": "object",
@@ -1858,9 +2898,20 @@ var doc = `{
                         "192.168.0.4"
                     ]
                 },
+                "httpPort": {
+                    "type": "integer",
+                    "example": 8123
+                },
                 "isReplica": {
                     "type": "boolean",
                     "example": true
+                },
+                "keeper": {
+                    "type": "string",
+                    "example": "zookeeper"
+                },
+                "keeperConf": {
+                    "$ref": "#/definitions/model.KeeperConf"
                 },
                 "logic_cluster": {
                     "type": "string",
@@ -1890,9 +2941,19 @@ var doc = `{
                     "type": "string",
                     "example": "127.0.0.1"
                 },
+                "promMetricPort": {
+                    "$ref": "#/definitions/model.PromMetricPort"
+                },
                 "promPort": {
                     "type": "integer",
                     "example": 9090
+                },
+                "protocol": {
+                    "type": "string",
+                    "example": "native"
+                },
+                "secure": {
+                    "type": "boolean"
                 },
                 "sshPassword": {
                     "type": "string",
@@ -1931,10 +2992,6 @@ var doc = `{
                 "zkPort": {
                     "type": "integer",
                     "example": 2181
-                },
-                "zkStatusPort": {
-                    "type": "integer",
-                    "example": 8080
                 }
             }
         },
@@ -1979,6 +3036,14 @@ var doc = `{
                     "type": "integer",
                     "example": 9090
                 },
+                "protocol": {
+                    "type": "string",
+                    "example": "native"
+                },
+                "secure": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "user": {
                     "type": "string",
                     "example": "ck"
@@ -1997,10 +3062,6 @@ var doc = `{
                 "zkPort": {
                     "type": "integer",
                     "example": 2181
-                },
-                "zkStatusPort": {
-                    "type": "integer",
-                    "example": 8080
                 }
             }
         },
@@ -2036,11 +3097,16 @@ var doc = `{
                     "example": "age"
                 },
                 "options": {
-                    "description": "example:[\"DEFAULT now()\", \"CODEC(NONE)\"]",
                     "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "example": [
+                        "DEFAULT now()",
+                        "CODEC(NONE)",
+                        "COMMENT",
+                        "年龄"
+                    ]
                 },
                 "type": {
                     "type": "string",
@@ -2062,36 +3128,50 @@ var doc = `{
                 }
             }
         },
+        "model.CkTableRename": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string",
+                    "example": "col_old"
+                },
+                "to": {
+                    "type": "string",
+                    "example": "col_new"
+                }
+            }
+        },
         "model.CkTableTTL": {
             "type": "object",
             "properties": {
                 "action": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "toVolume"
                 },
                 "interval": {
-                    "type": "integer"
+                    "type": "integer",
+                    "example": 3
                 },
                 "target": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "main"
                 },
                 "time_column": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "_timestamp"
                 },
                 "unit": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "MONTH"
                 }
             }
         },
         "model.CkUpgradeCkReq": {
             "type": "object",
             "properties": {
-                "packageType": {
-                    "type": "string",
-                    "example": "Linux.x86_64.rpm"
-                },
                 "packageVersion": {
                     "type": "string",
-                    "example": "20.9.3.45"
+                    "example": "22.3.6.5"
                 },
                 "policy": {
                     "type": "string",
@@ -2103,6 +3183,29 @@ var doc = `{
                 }
             }
         },
+        "model.Coordination": {
+            "type": "object",
+            "properties": {
+                "autoForwarding": {
+                    "type": "boolean"
+                },
+                "expert": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "forceSync": {
+                    "type": "boolean"
+                },
+                "operationTimeoutMs": {
+                    "type": "integer"
+                },
+                "sessionTimeoutMs": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.CreateCkTableReq": {
             "type": "object",
             "properties": {
@@ -2110,14 +3213,30 @@ var doc = `{
                     "type": "string",
                     "example": "default"
                 },
+                "dist_table": {
+                    "type": "string"
+                },
                 "distinct": {
                     "type": "boolean",
                     "example": true
+                },
+                "dryrun": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "fields": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/model.CkTableNameType"
+                    }
+                },
+                "force_create": {
+                    "type": "boolean"
+                },
+                "indexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Index"
                     }
                 },
                 "name": {
@@ -2136,8 +3255,15 @@ var doc = `{
                 "partition": {
                     "$ref": "#/definitions/model.CkTablePartition"
                 },
+                "projections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Projection"
+                    }
+                },
                 "storage_policy": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "external"
                 },
                 "ttl": {
                     "type": "array",
@@ -2147,9 +3273,36 @@ var doc = `{
                 }
             }
         },
+        "model.DMLOnLogicReq": {
+            "type": "object",
+            "properties": {
+                "cond": {
+                    "type": "string"
+                },
+                "database": {
+                    "type": "string"
+                },
+                "kv": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "manipulation": {
+                    "type": "string"
+                },
+                "table": {
+                    "type": "string"
+                }
+            }
+        },
         "model.Disk": {
             "type": "object",
             "properties": {
+                "allowedBackup": {
+                    "type": "boolean",
+                    "example": true
+                },
                 "diskHdfs": {
                     "$ref": "#/definitions/model.DiskHdfs"
                 },
@@ -2179,9 +3332,136 @@ var doc = `{
                     "type": "string",
                     "example": "default"
                 },
+                "dist_name": {
+                    "type": "string",
+                    "example": "dist_table"
+                },
                 "table_name": {
                     "type": "string",
                     "example": "test_table"
+                }
+            }
+        },
+        "model.GetLogReq": {
+            "type": "object",
+            "properties": {
+                "lines": {
+                    "type": "integer",
+                    "example": 1000
+                },
+                "logType": {
+                    "type": "string",
+                    "example": "normal"
+                },
+                "tail": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "model.GroupUniqArrayField": {
+            "type": "object",
+            "properties": {
+                "defaultValue": {
+                    "description": "默认值",
+                    "type": "string"
+                },
+                "maxSize": {
+                    "description": "聚合条数",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "字段名",
+                    "type": "string"
+                }
+            }
+        },
+        "model.GroupUniqArrayReq": {
+            "type": "object",
+            "properties": {
+                "database": {
+                    "description": "数据库",
+                    "type": "string"
+                },
+                "fields": {
+                    "description": "聚合字段",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.GroupUniqArrayField"
+                    }
+                },
+                "populate": {
+                    "description": "是否要同步存量数据",
+                    "type": "boolean"
+                },
+                "table": {
+                    "description": "原始表名",
+                    "type": "string"
+                },
+                "timeField": {
+                    "description": "时间字段",
+                    "type": "string"
+                }
+            }
+        },
+        "model.Index": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "granularity": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "minmax, set, bloom_filter, ngrambf_v1, tokenbf_v1",
+                    "type": "string"
+                }
+            }
+        },
+        "model.KeeperConf": {
+            "type": "object",
+            "properties": {
+                "coordination": {
+                    "$ref": "#/definitions/model.Coordination"
+                },
+                "expert": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "keeperNodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "192.168.101.102",
+                        "192.168.101.105",
+                        "192.168.101.107"
+                    ]
+                },
+                "logPath": {
+                    "type": "string"
+                },
+                "raftPort": {
+                    "type": "integer",
+                    "example": 9234
+                },
+                "runtime": {
+                    "type": "string",
+                    "example": "standalone"
+                },
+                "snapshotPath": {
+                    "type": "string"
+                },
+                "tcpPort": {
+                    "type": "integer",
+                    "example": 9181
                 }
             }
         },
@@ -2195,6 +3475,64 @@ var doc = `{
                 "username": {
                     "type": "string",
                     "example": "ckman"
+                }
+            }
+        },
+        "model.MaterializedViewReq": {
+            "type": "object",
+            "properties": {
+                "database": {
+                    "type": "string"
+                },
+                "dryrun": {
+                    "type": "boolean"
+                },
+                "engine": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "operate": {
+                    "type": "integer"
+                },
+                "order": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "partition": {
+                    "$ref": "#/definitions/model.CkTablePartition"
+                },
+                "populate": {
+                    "type": "boolean"
+                },
+                "statement": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.OrderbyReq": {
+            "type": "object",
+            "properties": {
+                "database": {
+                    "type": "string"
+                },
+                "dist_name": {
+                    "type": "string"
+                },
+                "orderby": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "partitionby": {
+                    "$ref": "#/definitions/model.CkTablePartition"
+                },
+                "table": {
+                    "type": "string"
                 }
             }
         },
@@ -2230,6 +3568,34 @@ var doc = `{
                 }
             }
         },
+        "model.Projection": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sql": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.PromMetricPort": {
+            "type": "object",
+            "properties": {
+                "clickHouse": {
+                    "type": "integer"
+                },
+                "nodeExport": {
+                    "type": "integer"
+                },
+                "zooKeeper": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.PurgerTableReq": {
             "type": "object",
             "properties": {
@@ -2255,6 +3621,46 @@ var doc = `{
                         "t2",
                         "t3"
                     ]
+                }
+            }
+        },
+        "model.RebalanceShardingkey": {
+            "type": "object",
+            "properties": {
+                "allowLossRate": {
+                    "type": "number",
+                    "example": 0.1
+                },
+                "database": {
+                    "type": "string",
+                    "example": "default"
+                },
+                "saveTemps": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "shardingKey": {
+                    "type": "string",
+                    "example": "_timestamp"
+                },
+                "table": {
+                    "type": "string",
+                    "example": "t123"
+                }
+            }
+        },
+        "model.RebalanceTableReq": {
+            "type": "object",
+            "properties": {
+                "except_max_shard": {
+                    "description": "remove the max shard's data to other shards",
+                    "type": "boolean"
+                },
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.RebalanceShardingkey"
+                    }
                 }
             }
         },
@@ -2324,11 +3730,11 @@ type swaggerInfo struct {
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = swaggerInfo{
-	Version:     "1.0",
+	Version:     "2.0",
 	Host:        "",
 	BasePath:    "/",
 	Schemes:     []string{},
-	Title:       "Swagger Example API",
+	Title:       "CKMAN API",
 	Description: "",
 }
 

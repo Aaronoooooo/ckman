@@ -4,17 +4,19 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"github.com/housepower/ckman/log"
 	"math/rand"
 	"net"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
 	"unicode"
+
+	"github.com/housepower/ckman/log"
 
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
@@ -190,8 +192,12 @@ func GetIntegerwithDefault(value, defaul int) int {
 }
 
 // GetOutboundIP get preferred outbound ip of this machine
-//https://stackoverflow.com/questions/23558425/how-do-i-get-the-local-ip-address-in-go
+// https://stackoverflow.com/questions/23558425/how-do-i-get-the-local-ip-address-in-go
 func GetOutboundIP() net.IP {
+	if hostIp := os.Getenv("HOST_IP"); hostIp != "" {
+		return net.ParseIP(hostIp)
+	}
+
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
 		log.Logger.Fatalf("need to setup the default route: %v", err)
@@ -201,9 +207,8 @@ func GetOutboundIP() net.IP {
 	return localAddr.IP
 }
 
-
 func ConvertDuration(start, end time.Time) string {
-	hour, min, sec := 0,0,0
+	hour, min, sec := 0, 0, 0
 	d := int(end.Sub(start) / 1e9)
 	sec = d % 60
 	min = d / 60
@@ -215,10 +220,29 @@ func ConvertDuration(start, end time.Time) string {
 	if hour > 0 {
 		result = fmt.Sprintf("%dh ", hour)
 	}
-	if min > 0 || hour > 0{
+	if min > 0 || hour > 0 {
 		result += fmt.Sprintf("%dm ", min)
 	}
 	result += fmt.Sprintf("%ds", sec)
+	return result
+}
+
+func FormatReadableTime(seconds uint32) string {
+	var result string
+	var day = seconds / (24 * 3600)
+	if day > 0 {
+		result += fmt.Sprintf("%dd", day)
+	}
+	hour := (seconds - day*3600*24) / 3600
+	if hour > 0 {
+		result += fmt.Sprintf("%dh", hour)
+	}
+	minute := (seconds - day*24*3600 - hour*3600) / 60
+	if minute > 0 {
+		result += fmt.Sprintf("%dm", minute)
+	}
+	second := seconds - day*24*3600 - hour*3600 - minute*60
+	result += fmt.Sprintf("%ds", second)
 	return result
 }
 
@@ -226,13 +250,72 @@ func Shuffle(value []string) []string {
 	rand.Seed(time.Now().UnixNano())
 
 	arr := make([]string, len(value))
-	for index, a := range value {
-		arr[index] = a
-	}
+	copy(arr, value)
 
 	rand.Shuffle(len(arr), func(i, j int) {
 		arr[i], arr[j] = arr[j], arr[i]
 	})
 
 	return arr
+}
+
+func ArrayDistinct[T string | int | int64 | int32 | uint | uint64 | uint32 | float32 | float64](arr []T) []T {
+	set := make(map[T]struct{}, len(arr))
+	j := 0
+	for _, v := range arr {
+		_, ok := set[v]
+		if ok {
+			continue
+		}
+		set[v] = struct{}{}
+		arr[j] = v
+		j++
+	}
+	return arr[:j]
+}
+
+func ArrayRemove[T string | int | int64 | int32 | uint | uint64 | uint32 | float32 | float64](arr []T, elem T) []T {
+	var res []T
+	for _, v := range arr {
+		if v == elem {
+			continue
+		}
+		res = append(res, v)
+	}
+	return res
+}
+
+func ArraySearch[T string | int | int64 | int32 | uint | uint64 | uint32 | float32 | float64](target T, str_array []T) bool {
+	for _, str := range str_array {
+		if target == str {
+			return true
+		}
+	}
+	return false
+}
+
+func TernaryExpression(condition bool, texpr, fexpr interface{}) interface{} {
+	if condition {
+		return texpr
+	} else {
+		return fexpr
+	}
+}
+
+func EnsurePathNonPrefix(paths []string) error {
+	if len(paths) < 2 {
+		return nil
+	}
+	sort.Strings(paths)
+	for i := 1; i < len(paths); i++ {
+		curr := paths[i]
+		prev := paths[i-1]
+		if prev == curr {
+			return errors.Errorf("path %s is duplicate", curr)
+		}
+		if strings.HasPrefix(curr, prev) {
+			return errors.Errorf("path %s is subdir of path %s", curr, prev)
+		}
+	}
+	return nil
 }

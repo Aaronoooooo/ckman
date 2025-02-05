@@ -1,18 +1,23 @@
 package main
 
 import (
+	"embed"
+	"encoding/json"
 	"fmt"
-	"github.com/housepower/ckman/common"
-	"github.com/housepower/ckman/repository"
-	"github.com/housepower/ckman/service/runner"
 	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/housepower/ckman/common"
+	"github.com/housepower/ckman/repository"
+	"github.com/housepower/ckman/service/cron"
+	"github.com/housepower/ckman/service/runner"
+
 	"github.com/housepower/ckman/config"
 	"github.com/housepower/ckman/log"
+	_ "github.com/housepower/ckman/repository/dm8"
 	_ "github.com/housepower/ckman/repository/local"
 	_ "github.com/housepower/ckman/repository/mysql"
 	_ "github.com/housepower/ckman/repository/postgres"
@@ -30,18 +35,21 @@ const (
 )
 
 var (
-	Version          = ""
-	BuildTimeStamp   = ""
-	GitCommitHash    = ""
-	Daemon           = false
-	ConfigFilePath   = ""
-	LogFilePath      = ""
-	PidFilePath      = ""
-	EncryptPassword  = ""
+	Version         = ""
+	BuildTimeStamp  = ""
+	GitCommitHash   = ""
+	Daemon          = false
+	ConfigFilePath  = ""
+	LogFilePath     = ""
+	PidFilePath     = ""
+	EncryptPassword = ""
 )
 
-// @title Swagger Example API
-// @version 1.0
+//go:embed static/dist
+var fs embed.FS
+
+// @title CKMAN API
+// @version 2.0
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
 // @name token
@@ -52,6 +60,8 @@ func main() {
 		fmt.Printf("Parse config file %s fail: %v\n", ConfigFilePath, err)
 		os.Exit(1)
 	}
+	var conf config.CKManConfig
+	_ = common.DeepCopyByGob(&conf, &config.GlobalConfig)
 	err := common.Gsypt.Unmarshal(&config.GlobalConfig)
 	if err != nil {
 		fmt.Printf("gsypt config file %s fail: %v\n", ConfigFilePath, err)
@@ -82,10 +92,14 @@ func main() {
 	log.Logger.Infof("version: %v", Version)
 	log.Logger.Infof("build time: %v", BuildTimeStamp)
 	log.Logger.Infof("git commit hash: %v", GitCommitHash)
-
-	selfIP := common.GetOutboundIP().String()
+	//dump config to log must ensure the password not be decode
+	DumpConfig(conf)
+	if config.GlobalConfig.Server.Ip == "" {
+		config.GlobalConfig.Server.Ip = common.GetOutboundIP().String()
+	}
 	signalCh := make(chan os.Signal, 1)
 
+	defer common.Pool.Close()
 	err = repository.InitPersistent()
 	if err != nil {
 		log.Logger.Fatalf("init persistent failed:%v", err)
@@ -95,49 +109,53 @@ func main() {
 	if err != nil {
 		log.Logger.Fatalf("Failed to init nacos client, %v", err)
 	}
-	err = nacosClient.Start(selfIP, config.GlobalConfig.Server.Port)
+	err = nacosClient.Start(config.GlobalConfig.Server.Ip, config.GlobalConfig.Server.Port)
 	if err != nil {
 		log.Logger.Fatalf("Failed to start nacos client, %v", err)
 	}
 
 	zookeeper.ZkServiceCache = cache.New(time.Hour, time.Minute)
+	zookeeper.ZkServiceCache.OnEvicted(func(key string, value interface{}) {
+		value.(*zookeeper.ZkService).Conn.Close()
+	})
 
-	runnerServ := runner.NewRunnerService(selfIP, config.GlobalConfig.Server)
+	runnerServ := runner.NewRunnerService(config.GlobalConfig.Server.Ip, config.GlobalConfig.Server)
 	runnerServ.Start()
+	defer runnerServ.Stop()
 
 	// start http server
-	svr := server.NewApiServer(&config.GlobalConfig, signalCh)
+	svr := server.NewApiServer(&config.GlobalConfig, signalCh, fs)
 	if err := svr.Start(); err != nil {
 		log.Logger.Fatalf("start http server fail: %v", err)
 	}
-	log.Logger.Infof("start http server %s:%d success", selfIP, config.GlobalConfig.Server.Port)
+	defer svr.Stop()
+	log.Logger.Infof("start http server %s:%d success", config.GlobalConfig.Server.Ip, config.GlobalConfig.Server.Port)
 
+	cronSvr := cron.NewCronService(config.GlobalConfig.Cron)
+	if err = cronSvr.Start(); err != nil {
+		log.Logger.Fatalf("Failed to start cron service, %v", err)
+	}
+	defer cronSvr.Stop()
 	//block here, waiting for terminal signal
-	handleSignal(signalCh, svr, runnerServ)
+	handleSignal(signalCh)
 }
 
-func handleSignal(ch chan os.Signal, svr *server.ApiServer, runnerServ *runner.RunnerService) {
+func handleSignal(ch chan os.Signal) {
 	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	sig := <-ch
 	log.Logger.Infof("receive signal: %v", sig)
 	log.Logger.Warn("ckman exiting...")
 	switch sig {
 	case syscall.SIGINT, syscall.SIGTERM:
-		_ = termHandler(svr, runnerServ)
+		_ = termHandler()
 	case syscall.SIGHUP:
-		_ = termHandler(svr, runnerServ)
+		_ = termHandler()
 		_ = reloadHandler()
 	}
 	signal.Stop(ch)
 }
 
-func termHandler(svr *server.ApiServer, runnerServ *runner.RunnerService) error {
-	if err := svr.Stop(); err != nil {
-		return err
-	}
-
-	runnerServ.Stop()
-
+func termHandler() error {
 	var hosts []string
 	common.ConnectPool.Range(func(k, v interface{}) bool {
 		hosts = append(hosts, k.(string))
@@ -175,10 +193,10 @@ var VersionCmd = &cobra.Command{
 
 func InitCmd() {
 	var rootCmd = &cobra.Command{
-		Use:   "ckman",
+		Use: "ckman",
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&ConfigFilePath, "conf", "c", "conf/ckman.yaml", "Task file path")
+	rootCmd.PersistentFlags().StringVarP(&ConfigFilePath, "conf", "c", "conf/ckman.hjson", "Task file path")
 	rootCmd.PersistentFlags().StringVarP(&LogFilePath, "log", "l", "logs/ckman.log", "Log file path")
 	rootCmd.PersistentFlags().StringVarP(&PidFilePath, "pid", "p", "run/ckman.pid", "Pid file path")
 	rootCmd.PersistentFlags().StringVarP(&EncryptPassword, "encrypt", "e", "", "encrypt password")
@@ -208,3 +226,11 @@ func InitCmd() {
 	fmt.Printf("See more information in %s\n", LogFilePath)
 }
 
+func DumpConfig(conf config.CKManConfig) {
+	data, err := json.MarshalIndent(conf, "", "  ")
+	if err != nil {
+		log.Logger.Errorf("marshal error: %v", err)
+		return
+	}
+	log.Logger.Infof("%v", string(data))
+}

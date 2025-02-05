@@ -3,15 +3,17 @@ package postgres
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
+	"github.com/housepower/ckman/common"
 	"github.com/housepower/ckman/log"
 	"github.com/housepower/ckman/model"
 	"github.com/housepower/ckman/repository"
 	"github.com/pkg/errors"
 	driver "gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-	"strings"
-	"time"
+	"moul.io/zapgorm2"
 )
 
 type PostgresPersistent struct {
@@ -34,8 +36,10 @@ func (mp *PostgresPersistent) Init(config interface{}) error {
 		mp.Config.Password)
 
 	log.Logger.Debugf("postgres dsn:%s", dsn)
+	logger := zapgorm2.New(log.ZapLog)
+	logger.SetAsDefault()
 	db, err := gorm.Open(driver.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger,
 	})
 	if err != nil {
 		return errors.Wrap(err, "")
@@ -138,7 +142,7 @@ func (mp *PostgresPersistent) GetLogicClusterbyName(logic string) ([]string, err
 		return []string{}, wrapError(tx.Error)
 	}
 	physics := strings.Split(table.PhysicClusters, ",")
-	return physics, nil
+	return common.ArrayDistinct(physics), nil
 }
 
 func (mp *PostgresPersistent) GetAllClusters() (map[string]model.CKManClickHouseConfig, error) {
@@ -168,7 +172,7 @@ func (mp *PostgresPersistent) GetAllLogicClusters() (map[string][]string, error)
 	}
 	for _, table := range tables {
 		physics := strings.Split(table.PhysicClusters, ",")
-		logicMapping[table.LogicCluster] = physics
+		logicMapping[table.LogicCluster] = common.ArrayDistinct(physics)
 	}
 	return logicMapping, nil
 }
@@ -198,7 +202,7 @@ func (mp *PostgresPersistent) CreateLogicCluster(logic string, physics []string)
 	}
 	table := TblLogic{
 		LogicCluster:   logic,
-		PhysicClusters: strings.Join(physics, ","),
+		PhysicClusters: strings.Join(common.ArrayDistinct(physics), ","),
 	}
 	tx := mp.Client.Create(&table)
 	return wrapError(tx.Error)
@@ -230,7 +234,7 @@ func (mp *PostgresPersistent) UpdateLogicCluster(logic string, physics []string)
 	}
 	table := TblLogic{
 		LogicCluster:   logic,
-		PhysicClusters: strings.Join(physics, ","),
+		PhysicClusters: strings.Join(common.ArrayDistinct(physics), ","),
 	}
 	tx := mp.Client.Model(TblLogic{}).Where("logic_name = ?", logic).Updates(&table)
 	return wrapError(tx.Error)
@@ -317,12 +321,12 @@ func (mp *PostgresPersistent) UpdateQueryHistory(qh model.QueryHistory) error {
 		QuerySql:   qh.QuerySql,
 		CreateTime: time.Now(),
 	}
-	tx := mp.Client.Model(TblLogic{}).Where("checksum = ?", qh.CheckSum).Updates(&table)
+	tx := mp.Client.Model(TblQueryHistory{}).Where("checksum = ?", qh.CheckSum).Updates(&table)
 	return wrapError(tx.Error)
 }
 
 func (mp *PostgresPersistent) DeleteQueryHistory(checksum string) error {
-	tx := mp.Client.Where("checksum = ?", checksum).Unscoped().Delete(&TblLogic{})
+	tx := mp.Client.Where("checksum = ?", checksum).Unscoped().Delete(&TblQueryHistory{})
 	return wrapError(tx.Error)
 }
 
@@ -369,6 +373,7 @@ func (mp *PostgresPersistent) CreateTask(task model.Task) error {
 }
 
 func (mp *PostgresPersistent) UpdateTask(task model.Task) error {
+	task.UpdateTime = time.Now()
 	config, err := json.Marshal(task)
 	if err != nil {
 		return errors.Wrap(err, "")
@@ -389,9 +394,9 @@ func (mp *PostgresPersistent) DeleteTask(id string) error {
 
 func (mp *PostgresPersistent) GetAllTasks() ([]model.Task, error) {
 	var tables []TblTask
-	tx := mp.Client.Find(&tables).Order("status")
-	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
-		return nil, errors.Wrap(tx.Error, "")
+	tx := mp.Client.Find(&tables)
+	if tx.Error != nil && !errors.Is(tx.Error, gorm.ErrRecordNotFound) {
+		return nil, tx.Error
 	}
 	var tasks []model.Task
 	var err error
@@ -449,10 +454,10 @@ func (mp *PostgresPersistent) GetTaskbyTaskId(id string) (model.Task, error) {
 }
 
 func wrapError(err error) error {
-	if err == gorm.ErrRecordNotFound {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		err = repository.ErrRecordNotFound
 	}
-	return errors.Wrap(err, "")
+	return err
 }
 
 func NewPostgresPersistent() *PostgresPersistent {

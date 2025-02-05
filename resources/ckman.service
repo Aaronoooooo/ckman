@@ -10,7 +10,9 @@ User=ckman
 Restart=always
 RestartSec=30
 RuntimeDirectory=ckman
-ExecStart=/usr/local/bin/ckman -c=/etc/ckman/conf/ckman.yaml -p=/run/ckman/ckman.pid -l=/var/log/ckman/ckman.log -d
+ExecStart=/usr/local/bin/ckman -c=/etc/ckman/conf/ckman.hjson -p=/run/ckman/ckman.pid -l=/var/log/ckman/ckman.log -d
+LimitCORE=infinity
+LimitNOFILE=500000
 
 [Install]
 WantedBy=multi-user.target

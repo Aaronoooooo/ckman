@@ -1,28 +1,33 @@
 package controller
 
 import (
+	"io"
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/housepower/ckman/common"
 	"github.com/housepower/ckman/log"
 	"github.com/housepower/ckman/model"
 	"github.com/pkg/errors"
-	"io"
-	"net/http"
-	"strings"
 )
 
 const (
-	GET_SCHEMA_UI_DEPLOY = "deploy"
-	GET_SCHEMA_UI_CONFIG = "config"
+	GET_SCHEMA_UI_DEPLOY    = "deploy"
+	GET_SCHEMA_UI_CONFIG    = "config"
+	GET_SCHEMA_UI_REBALANCE = "rebalance"
 )
 
 var SchemaUIMapping map[string]common.ConfigParams
 
-type SchemaUIController struct{}
+type SchemaUIController struct {
+	Controller
+}
 
 var schemaHandleFunc = map[string]func() common.ConfigParams{
-	GET_SCHEMA_UI_DEPLOY: RegistCreateClusterSchema,
-	GET_SCHEMA_UI_CONFIG: RegistUpdateConfigSchema,
+	GET_SCHEMA_UI_DEPLOY:    RegistCreateClusterSchema,
+	GET_SCHEMA_UI_CONFIG:    RegistUpdateConfigSchema,
+	GET_SCHEMA_UI_REBALANCE: RegistRebalanceClusterSchema,
 }
 
 func getPkgType() []common.Candidate {
@@ -51,8 +56,12 @@ func getPkgLists() []common.Candidate {
 	return pkgLists
 }
 
-func NewSchemaUIController() *SchemaUIController {
-	return &SchemaUIController{}
+func NewSchemaUIController(wrapfunc Wrapfunc) *SchemaUIController {
+	return &SchemaUIController{
+		Controller: Controller{
+			wrapfunc: wrapfunc,
+		},
+	}
 }
 
 func RegistCreateClusterSchema() common.ConfigParams {
@@ -64,11 +73,24 @@ func RegistCreateClusterSchema() common.ConfigParams {
 		DescriptionZH: "不得与本ckman管理的其他集群名重复",
 		DescriptionEN: "not allow to duplicate with exist name",
 	})
+	params.MustRegister(conf, "Comment", &common.Parameter{
+		LabelZH:  "备注",
+		LabelEN:  "Comment",
+		Required: "false",
+	})
 	params.MustRegister(conf, "LogicCluster", &common.Parameter{
 		LabelZH:       "逻辑集群名",
 		LabelEN:       "Logic Name",
 		DescriptionZH: "逻辑集群，存在于物理集群之上",
 		DescriptionEN: "require physical cluster",
+	})
+	params.MustRegister(conf, "Cwd", &common.Parameter{
+		LabelZH:       "工作路径",
+		LabelEN:       "WorkingDirectory",
+		DescriptionZH: "工作路径，仅tgz部署时需要",
+		DescriptionEN: "Working directory, only required for tgz deployment",
+		Visiable:      "PkgType.indexOf('tgz') !== -1",
+		Regexp:        "^/.+/$",
 	})
 	params.MustRegister(conf, "SshUser", &common.Parameter{
 		LabelZH:       "系统账户名",
@@ -86,7 +108,7 @@ func RegistCreateClusterSchema() common.ConfigParams {
 			{Value: "1", LabelEN: "Password(not save)", LabelZH: "密码认证(不保存密码)"},
 			{Value: "2", LabelEN: "Public Key", LabelZH: "公钥认证"},
 		},
-		Default: "2",
+		Default: "0",
 	})
 	params.MustRegister(conf, "SshPassword", &common.Parameter{
 		LabelZH:       "系统账户密码",
@@ -95,6 +117,7 @@ func RegistCreateClusterSchema() common.ConfigParams {
 		DescriptionEN: "can't be empty",
 		Visiable:      "AuthenticateType != '2'",
 		InputType:     common.InputPassword,
+		Required:      "false",
 	})
 	params.MustRegister(conf, "SshPort", &common.Parameter{
 		LabelZH:       "SSH 端口",
@@ -107,40 +130,171 @@ func RegistCreateClusterSchema() common.ConfigParams {
 		LabelEN:   "Default Password",
 		InputType: common.InputPassword,
 	})
-	params.MustRegister(conf, "IsReplica", &common.Parameter{
-		LabelZH:       "是否为多副本",
-		LabelEN:       "Replica",
-		DescriptionZH: "物理集群的每个shard是否为多副本, 生产环境建议每个shard为两副本",
-		DescriptionEN: "Whether each Shard of the cluster is multiple replication, we suggest each shard have two copies.",
+	params.MustRegister(conf, "EncryptType", &common.Parameter{
+		LabelZH:       "密码加密算法",
+		LabelEN:       "EncryptType",
+		DescriptionZH: "密码保存时使用什么加密方式，默认明文",
+		DescriptionEN: "What encryption method is used when the password is saved, the default is plaintext",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "PLAINTEXT", LabelZH: "PLAINTEXT"},
+			{Value: "1", LabelEN: "SHA256_HEX", LabelZH: "SHA256_HEX"},
+			{Value: "2", LabelEN: "DOUBLE_SHA1_HEX", LabelZH: "DOUBLE_SHA1_HEX"},
+		},
+		Default: "0",
 	})
-	params.MustRegister(conf, "Hosts", &common.Parameter{
-		LabelZH:       "集群结点IP地址列表",
-		LabelEN:       "ClickHouse Node List",
-		DescriptionZH: "由ckman完成各结点分配到shard。每输入框为单个IP，或者IP范围，或者网段掩码",
-		DescriptionEN: "ClickHouse Node ip, support CIDR or Range.designation by ckman automatically",
+	params.MustRegister(conf, "Shards", &common.Parameter{
+		LabelZH:       "集群节点配置",
+		LabelEN:       "ClickHouse Cluster Node",
+		DescriptionEN: "shard of clickhouse cluster",
+		DescriptionZH: "集群分片信息",
+	})
+
+	var shard model.CkShard
+	params.MustRegister(shard, "Replicas", &common.Parameter{
+		LabelZH:       "分片",
+		LabelEN:       "Shard",
+		DescriptionEN: "replicas of each shard",
+		DescriptionZH: "集群每个分片的副本信息",
+	})
+	var replica model.CkReplica
+	params.MustRegister(replica, "Ip", &common.Parameter{
+		LabelZH: "副本节点IP",
+		LabelEN: "Replica Node IP",
+	})
+	params.MustRegister(conf, "Protocol", &common.Parameter{
+		LabelZH: "连接协议",
+		LabelEN: "Protocol",
+		Default: "native",
+		Candidates: []common.Candidate{
+			{Value: "native", LabelEN: "native", LabelZH: "native"},
+			{Value: "http", LabelEN: "http", LabelZH: "http"},
+		},
 	})
 	params.MustRegister(conf, "Port", &common.Parameter{
 		LabelZH: "TCP端口",
 		LabelEN: "TCPPort",
 		Default: "9000",
 	})
+	params.MustRegister(conf, "HttpPort", &common.Parameter{
+		LabelZH: "HTTP端口",
+		LabelEN: "HTTP Port",
+		Default: "8123",
+	})
+	params.MustRegister(conf, "Secure", &common.Parameter{
+		LabelZH:  "TLS安全认证",
+		LabelEN:  "TLS Secure",
+		Default:  "false",
+		Required: "false",
+		Editable: "false",
+	})
+
+	params.MustRegister(conf, "Keeper", &common.Parameter{
+		Default:       "zookeeper",
+		DescriptionZH: "如果使用clickhouse-keeper， 则默认由ckman托管；如果使用已有zookeeper或已经创建好的keeper集群，都视同zookeeper",
+		Candidates: []common.Candidate{
+			{Value: model.Zookeeper, LabelEN: "Zookeeper", LabelZH: "Zookeeper"},
+			{Value: model.ClickhouseKeeper, LabelEN: "ClickHouse-Keeper", LabelZH: "ClickHouse-Keeper"},
+		},
+	})
+
+	params.MustRegister(conf, "KeeperConf", &common.Parameter{
+		LabelZH:       "Keeper配置",
+		LabelEN:       "KeeperConf",
+		DescriptionZH: "clickhouse-keeper的配置项",
+		Visiable:      "Keeper == 'clickhouse-keeper'",
+	})
+
+	var keeper model.KeeperConf
+	params.MustRegister(keeper, "Runtime", &common.Parameter{
+		LabelZH:       "运行方式",
+		LabelEN:       "Runtime",
+		Default:       model.KeeperRuntimeStandalone,
+		DescriptionZH: "如果单独部署，则和clickhouse-server 分开进程；如果内置，则和clickhouse-server放在一块",
+		Candidates: []common.Candidate{
+			{Value: model.KeeperRuntimeStandalone, LabelEN: "Standalone", LabelZH: "单独部署"},
+			{Value: model.KeeperRuntimeInternal, LabelEN: "Internal", LabelZH: "内置"},
+		},
+	})
+	params.MustRegister(keeper, "KeeperNodes", &common.Parameter{
+		LabelZH:  "Keeper节点",
+		LabelEN:  "KeeperNodes",
+		Visiable: "Runtime == 'standalone'",
+	})
+
+	params.MustRegister(keeper, "TcpPort", &common.Parameter{
+		LabelZH: "Keeper端口",
+		LabelEN: "TcpPort",
+		Default: "9181",
+	})
+	params.MustRegister(keeper, "RaftPort", &common.Parameter{
+		LabelZH: "Raft通信端口",
+		LabelEN: "RaftPort",
+		Default: "9234",
+	})
+	params.MustRegister(keeper, "LogPath", &common.Parameter{
+		LabelZH: "Log路径",
+		LabelEN: "LogPath",
+		Default: "/var/lib/",
+		Regexp:  "^/.+/$",
+	})
+	params.MustRegister(keeper, "SnapshotPath", &common.Parameter{
+		LabelZH: "Snapshot路径",
+		LabelEN: "SnapshotPath",
+		Default: "/var/lib/",
+		Regexp:  "^/.+/$",
+	})
+	params.MustRegister(keeper, "Expert", &common.Parameter{
+		LabelZH:  "专家配置",
+		LabelEN:  "Expert",
+		Required: "false",
+	})
+	params.MustRegister(keeper, "Coordination", &common.Parameter{
+		LabelZH:  "协作配置",
+		LabelEN:  "Coordination",
+		Required: "false",
+	})
+
+	var coordination model.Coordination
+	params.MustRegister(coordination, "OperationTimeoutMs", &common.Parameter{
+		LabelZH:  "OperationTimeoutMs",
+		LabelEN:  "OperationTimeoutMs",
+		Default:  "10000",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "SessionTimeoutMs", &common.Parameter{
+		LabelZH:  "SessionTimeoutMs",
+		LabelEN:  "SessionTimeoutMs",
+		Default:  "30000",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "ForceSync", &common.Parameter{
+		LabelZH:  "ForceSync",
+		LabelEN:  "ForceSync",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "AutoForwarding", &common.Parameter{
+		LabelZH:  "AutoForwarding",
+		LabelEN:  "AutoForwarding",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "Expert", &common.Parameter{
+		LabelZH:  "专家配置",
+		LabelEN:  "Expert",
+		Required: "false",
+	})
+
 	params.MustRegister(conf, "ZkNodes", &common.Parameter{
 		LabelZH:       "ZooKeeper集群结点列表",
 		LabelEN:       "Zookeeper Node List",
 		DescriptionZH: "每段为单个IP，或者IP范围，或者网段掩码",
 		DescriptionEN: "Zookeeper Node ip, support CIDR or Range.",
+		Visiable:      "Keeper == 'zookeeper'",
 	})
 	params.MustRegister(conf, "ZkPort", &common.Parameter{
-		LabelZH: "ZooKeeper集群监听端口",
-		LabelEN: "Zookeeper Port",
-		Default: "2181",
-	})
-	params.MustRegister(conf, "ZkStatusPort", &common.Parameter{
-		LabelZH:       "Zookeeper监控端口",
-		LabelEN:       "Zookeeper Status Port",
-		DescriptionZH: "暴露给mntr等四字命令的端口，zookeeper 3.5.0 以上支持",
-		DescriptionEN: "expose to commands/mntr, zookeeper support it after 3.5.0",
-		Default:       "8080",
+		LabelZH:  "ZooKeeper集群监听端口",
+		LabelEN:  "Zookeeper Port",
+		Default:  "2181",
+		Visiable: "Keeper == 'zookeeper'",
 	})
 	params.MustRegister(conf, "PromHost", &common.Parameter{
 		LabelZH:  "Promethues 地址",
@@ -154,10 +308,43 @@ func RegistCreateClusterSchema() common.ConfigParams {
 		Default:  "9090",
 		Required: "false",
 	})
+	params.MustRegister(conf, "PromMetricPort", &common.Parameter{
+		LabelZH:  "Promethues指标端口",
+		LabelEN:  "Prometheus Metrics Port",
+		Required: "false",
+	})
+
+	var promPort model.PromMetricPort
+	params.MustRegister(promPort, "ClickHouse", &common.Parameter{
+		LabelZH:       "ClickHouse指标端口",
+		LabelEN:       "ClickHouse Metrics Port",
+		Default:       "9363",
+		Required:      "false",
+		DescriptionEN: "Prometheus port export by ClickHouse",
+		DescriptionZH: "clickhouse暴露的prometheus端口",
+	})
+	params.MustRegister(promPort, "ZooKeeper", &common.Parameter{
+		LabelZH:       "ZooKeeper指标端口",
+		LabelEN:       "Zookeeper Metrics Port",
+		Default:       "7000",
+		Required:      "false",
+		DescriptionEN: "Prometheus port export by Zookeeper",
+		DescriptionZH: "zookeeper暴露的prometheus端口",
+	})
+	params.MustRegister(promPort, "NodeExport", &common.Parameter{
+		LabelZH:       "Node Exporter端口",
+		LabelEN:       "Node Exporter Port",
+		Default:       "9100",
+		Required:      "false",
+		DescriptionEN: "Prometheus port export by NodeExporter",
+		DescriptionZH: "NodeExporter暴露的prometheus端口",
+	})
+
 	params.MustRegister(conf, "Path", &common.Parameter{
 		LabelZH:       "数据存储路径",
 		LabelEN:       "Data Path",
 		DescriptionZH: "ClickHouse存储数据的路径，路径需要存在且必须以'/'结尾",
+		Default:       "/var/lib/",
 		DescriptionEN: "path need exist, must end with '/'",
 		Regexp:        "^/.+/$",
 	})
@@ -216,8 +403,15 @@ Non-professionals please do not fill in this`,
 		Candidates: []common.Candidate{
 			{Value: "local", LabelEN: "Local", LabelZH: "本地磁盘"},
 			{Value: "s3", LabelEN: "AWS S3", LabelZH: "AWS S3"},
-			{Value: "hdfs", LabelEN: "HDFS", LabelZH: "HDFS"},
+			//{Value: "hdfs", LabelEN: "HDFS", LabelZH: "HDFS"},
 		},
+	})
+	params.MustRegister(disk, "AllowedBackup", &common.Parameter{
+		LabelZH:       "允许备份",
+		LabelEN:       "AllowedBackup",
+		Required:      "false",
+		DescriptionZH: "是否允许备份数据到该磁盘",
+		DescriptionEN: "Whether to allow backup data to the disk",
 	})
 	params.MustRegister(disk, "DiskLocal", &common.Parameter{
 		LabelZH:  "本地硬盘",
@@ -323,6 +517,38 @@ Non-professionals please do not fill in this`,
 		DescriptionEN: "normal user config management",
 		Required:      "false",
 	})
+	params.MustRegister(userconf, "Profiles", &common.Parameter{
+		LabelZH:  "配置管理",
+		LabelEN:  "Profiles",
+		Required: "false",
+	})
+	params.MustRegister(userconf, "Quotas", &common.Parameter{
+		LabelZH:  "配额管理",
+		LabelEN:  "Quotas",
+		Required: "false",
+	})
+	params.MustRegister(userconf, "Roles", &common.Parameter{
+		LabelZH:  "角色管理",
+		LabelEN:  "Roles",
+		Required: "false",
+	})
+	params.MustRegister(userconf, "Expert", &common.Parameter{
+		LabelZH: "用户高级配置",
+		LabelEN: "User Custom Config",
+		DescriptionZH: `自定义配置文件，语法接近xpath(https://www.w3schools.com/xml/xpath_syntax.asp);
+举例：title[@lang='en', @size=4]/header:header123， 最终生成的配置为:
+<title lang="en" size="4">
+    <header>header123</header>
+</title>
+非专业人士请勿填写此项`,
+		DescriptionEN: `Custom configuration items, similar to xpath syntax(https://www.w3schools.com/xml/xpath_syntax.asp);
+For example: title[@lang='en', @size=4]/header:header123, the final generated configuration is:
+<title lang="en" size="4">
+    <header>header123</header>
+</title>
+Non-professionals please do not fill in this`,
+		Required: "false",
+	})
 
 	var user model.User
 	params.MustRegister(user, "Name", &common.Parameter{
@@ -338,13 +564,264 @@ Non-professionals please do not fill in this`,
 		DescriptionEN: "can't be empty",
 		InputType:     common.InputPassword,
 	})
+	params.MustRegister(user, "EncryptType", &common.Parameter{
+		LabelZH:       "密码加密算法",
+		LabelEN:       "EncryptType",
+		DescriptionZH: "密码保存时使用什么加密方式，默认明文",
+		DescriptionEN: "What encryption method is used when the password is saved, the default is plaintext",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "PLAINTEXT", LabelZH: "PLAINTEXT"},
+			{Value: "1", LabelEN: "SHA256_HEX", LabelZH: "SHA256_HEX"},
+			{Value: "2", LabelEN: "DOUBLE_SHA1_HEX", LabelZH: "DOUBLE_SHA1_HEX"},
+		},
+		Default: "0",
+	})
+	params.MustRegister(user, "Profile", &common.Parameter{
+		LabelZH:       "限额",
+		LabelEN:       "Profile",
+		DescriptionZH: "设置用户相关参数，如：最大内存使用、只读等",
+		DescriptionEN: "Set user-related parameters, such as: maximum memory usage, read-only, etc",
+		Required:      "false",
+	})
+	params.MustRegister(user, "Quota", &common.Parameter{
+		LabelZH:       "配额",
+		LabelEN:       "Quota",
+		DescriptionZH: "配额允许您在一段时间内跟踪或限制资源使用情况",
+		DescriptionEN: "Quotas allow you to track or limit resource usage over a period of time. ",
+		Required:      "false",
+	})
+	params.MustRegister(user, "Roles", &common.Parameter{
+		LabelZH:       "角色",
+		LabelEN:       "Roles",
+		DescriptionZH: "角色可以通过SQL的方式定义某类用户对数据库的访问权限",
+		DescriptionEN: "Roles can define the access rights of certain types of users to the database by means of SQL.",
+		Required:      "false",
+	})
+	params.MustRegister(user, "Networks", &common.Parameter{
+		LabelZH:       "允许登录地址",
+		LabelEN:       "NetWorks",
+		DescriptionZH: "用户可以连接到 ClickHouse 服务器的网络列表。",
+		DescriptionEN: "List of networks from which the user can connect to the ClickHouse server.",
+		Required:      "false",
+	})
+	params.MustRegister(user, "DbRowPolices", &common.Parameter{
+		LabelZH:       "访问权限",
+		LabelEN:       "DbRowPolices",
+		DescriptionZH: "设置数据库及表的访问权限",
+		DescriptionEN: "Set database and table access permissions",
+		Required:      "false",
+	})
 
+	var dbRow model.DbRowPolicy
+	params.MustRegister(dbRow, "Database", &common.Parameter{
+		LabelZH:       "数据库",
+		LabelEN:       "Database",
+		DescriptionZH: "用户只能访问的数据库",
+		DescriptionEN: "Databases that users can only access",
+	})
+	params.MustRegister(dbRow, "TblRowPolicies", &common.Parameter{
+		LabelZH:       "行访问权限",
+		LabelEN:       "TblRowPolicies",
+		DescriptionZH: "用户只能访问数据库的哪些行",
+		DescriptionEN: "Which rows of the database the user can only access",
+		Required:      "false",
+	})
+
+	var networks model.Networks
+	params.MustRegister(networks, "IPs", &common.Parameter{
+		LabelZH:       "IP列表",
+		LabelEN:       "IPs",
+		DescriptionZH: "用户能访问的数据库表",
+		DescriptionEN: "IP address or network mask",
+		Required:      "false",
+	})
+	params.MustRegister(networks, "Hosts", &common.Parameter{
+		LabelZH:       "主机列表",
+		LabelEN:       "Hosts",
+		DescriptionZH: "用户能访问的数据库表",
+		DescriptionEN: "o check access, a DNS query is performed, and all returned IP addresses are compared to the peer address.",
+		Required:      "false",
+	})
+	params.MustRegister(networks, "HostRegexps", &common.Parameter{
+		LabelZH:       "主机名正则匹配",
+		LabelEN:       "HostRegexps",
+		DescriptionZH: "主机名正则表达式匹配",
+		DescriptionEN: "Regular expression for hostnames",
+		Required:      "false",
+	})
+
+	var tblRow model.TblRowPolicy
+	params.MustRegister(tblRow, "Table", &common.Parameter{
+		LabelZH:       "表名",
+		LabelEN:       "Table",
+		DescriptionZH: "用户能访问的数据库表",
+		DescriptionEN: "Which table the user can only access",
+	})
+	params.MustRegister(tblRow, "Filter", &common.Parameter{
+		LabelZH:       "过滤器",
+		LabelEN:       "Filter",
+		DescriptionZH: "过滤器可以是任何产生 UInt8 类型值的表达式。它通常包含比较和逻辑运算符。不为此用户返回从 database_name.table1 中筛选结果为 0 的行。过滤与 PREWHERE 操作不兼容，并禁用 WHERE→PREWHERE 优化。",
+		DescriptionEN: "The filter can be any expression resulting in a UInt8-type value. It usually contains comparisons and logical operators. Rows from database_name.table1 where filter results to 0 are not returned for this user. The filtering is incompatible with PREWHERE operations and disables WHERE→PREWHERE optimization.",
+	})
+
+	var profile model.Profile
+	params.MustRegister(profile, "Name", &common.Parameter{
+		LabelZH: "配置名称",
+		LabelEN: "Name",
+	})
+	params.MustRegister(profile, "ReadOnly", &common.Parameter{
+		LabelZH:       "只读约束",
+		LabelEN:       "ReadOnly",
+		DescriptionZH: "限制除 DDL 查询之外的所有类型的查询的权限。",
+		DescriptionEN: "Restricts permissions for all types of queries except DDL queries.",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "Default", LabelZH: "不限制"},
+			{Value: "1", LabelEN: "Read", LabelZH: "只读权限"},
+			{Value: "2", LabelEN: "Read and Set", LabelZH: "读权限和设置权限"},
+		},
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(profile, "AllowDDL", &common.Parameter{
+		LabelZH:       "DDL权限",
+		LabelEN:       "AllowDDL",
+		DescriptionZH: "限制除 DDL 查询之外的所有类型的查询的权限",
+		DescriptionEN: "Restricts permissions for DDL queries",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "Not Allowed", LabelZH: "不允许 "},
+			{Value: "1", LabelEN: "Allowed", LabelZH: "允许"},
+		},
+		Default:  "1",
+		Required: "false",
+	})
+	params.MustRegister(profile, "MaxThreads", &common.Parameter{
+		LabelZH:       "最大线程数",
+		LabelEN:       "MaxThreads",
+		DescriptionZH: "查询处理线程的最大数量，不包括从远程服务器检索数据的线程",
+		DescriptionEN: "The maximum number of query processing threads, excluding threads for retrieving data from remote servers (see the ‘max_distributed_connections’ parameter).",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "MaxMemoryUsage", &common.Parameter{
+		LabelZH:       "最大使用内存",
+		LabelEN:       "MaxMemoryUsage",
+		DescriptionZH: "用于在单个服务器上运行查询的最大RAM量",
+		DescriptionEN: "The maximum amount of RAM to use for running a query on a single server.",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "MaxMemoryUsageForAllQueries", &common.Parameter{
+		LabelZH:       "用户查询可用最大内存",
+		LabelEN:       "MaxMemoryUsageForAllQueries",
+		DescriptionZH: "在单个ClickHouse服务进程中，所有运行的查询累加在一起，限制使用的最大内存用量，默认为0不做限制",
+		DescriptionEN: "In a single ClickHouse service process, all running queries are accumulated together to limit the maximum memory usage. The default value is 0 and no limit is imposed.",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "MaxExecutionTime", &common.Parameter{
+		LabelZH:       "SQL超时时间",
+		LabelEN:       "MaxExecutionTime",
+		DescriptionZH: "如果查询运行时间超过指定的秒数，则行为将由“timeout_overflow_mode”确定，默认情况下为 - 引发异常。请注意，在数据处理过程中，将检查超时，查询只能在指定位置停止。它目前无法在聚合状态合并或查询分析期间停止，实际运行时间将高于此设置的值。",
+		DescriptionEN: "If query run time exceeded the specified number of seconds, the behavior will be determined by the 'timeout_overflow_mode' which by default is - throw an exception. Note that the timeout is checked and query can stop only in designated places during data processing. It currently cannot stop during merging of aggregation states or during query analysis, and the actual run time will be higher than the value of this setting.",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "Expert", &common.Parameter{
+		LabelZH:       "专家配置",
+		LabelEN:       "Expert",
+		DescriptionZH: "限额高级配置，参考：https://clickhouse.com/docs/en/operations/settings/settings-profiles/",
+		DescriptionEN: "Advanced configuration of quota, refer to https://clickhouse.com/docs/en/operations/settings/settings-profiles/",
+		Required:      "false",
+	})
+
+	var quota model.Quota
+	params.MustRegister(quota, "Name", &common.Parameter{
+		LabelZH: "配额名称",
+		LabelEN: "Name",
+	})
+	params.MustRegister(quota, "Intervals", &common.Parameter{
+		LabelZH:       "周期",
+		LabelEN:       "Interval",
+		DescriptionZH: "配额生效的周期时段",
+		DescriptionEN: "Restrictions for a time period. You can set many intervals with different restrictions.",
+	})
+
+	var role model.Role
+	params.MustRegister(role, "Name", &common.Parameter{
+		LabelZH: "角色名称",
+		LabelEN: "Name",
+	})
+	params.MustRegister(role, "Grants", &common.Parameter{
+		LabelZH: "授权",
+		LabelEN: "Grants",
+	})
+	var grants model.Grants
+	params.MustRegister(grants, "Query", &common.Parameter{
+		LabelZH:       "授权 SQL",
+		LabelEN:       "Grant SQL",
+		DescriptionEN: "write SQL like `GRANT CREATE ON *.* WITH GRANT OPTION`",
+		DescriptionZH: "通过SQL编写GRANT语句定义， 如： `GRANT CREATE ON *.* WITH GRANT OPTION`",
+	})
+
+	var interval model.Interval
+	params.MustRegister(interval, "Duration", &common.Parameter{
+		LabelZH:       "周期时间",
+		LabelEN:       "Duration",
+		DescriptionZH: "周期的有效时长，默认为1小时",
+		DescriptionEN: "Length of the interval.",
+		Default:       "3600",
+	})
+	params.MustRegister(interval, "Queries", &common.Parameter{
+		LabelZH:       "请求总数限制",
+		LabelEN:       "Queries",
+		DescriptionZH: "0为不限制",
+		DescriptionEN: "Length of the interval.",
+		Default:       "0",
+		Required:      "false",
+	})
+	params.MustRegister(interval, "QuerySelects", &common.Parameter{
+		LabelZH:  "查询限制",
+		LabelEN:  "QuerySelects",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "QueryInserts", &common.Parameter{
+		LabelZH:  "插入限制",
+		LabelEN:  "QueryInserts",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "Errors", &common.Parameter{
+		LabelZH:  "错误限制",
+		LabelEN:  "Errors",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "ResultRows", &common.Parameter{
+		LabelZH:  "返回行限制",
+		LabelEN:  "ResultRows",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "ReadRows", &common.Parameter{
+		LabelZH:  "读取行限制",
+		LabelEN:  "ReadRows",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "ExecutionTime", &common.Parameter{
+		LabelZH:  "执行时间限制",
+		LabelEN:  "ExecutionTime",
+		Default:  "0",
+		Required: "false",
+	})
 	return params
 }
 
 func RegistUpdateConfigSchema() common.ConfigParams {
 	var params common.ConfigParams = make(map[string]*common.Parameter)
 	var conf model.CKManClickHouseConfig
+	params.MustRegister(conf, "Comment", &common.Parameter{
+		LabelZH:  "备注",
+		LabelEN:  "Comment",
+		Required: "false",
+	})
 	params.MustRegister(conf, "Version", &common.Parameter{
 		LabelZH:       "ClickHouse版本",
 		LabelEN:       "Version",
@@ -358,6 +835,14 @@ func RegistUpdateConfigSchema() common.ConfigParams {
 		LabelEN:       "Package Type",
 		DescriptionZH: "安装包的类型，表示当前安装包是什么系统架构，什么压缩格式",
 		DescriptionEN: "The type of the installation package, indicating what system architecture and compression format",
+		Editable:      "false",
+	})
+	params.MustRegister(conf, "Cwd", &common.Parameter{
+		LabelZH:       "工作路径",
+		LabelEN:       "WorkingDirectory",
+		DescriptionZH: "工作路径，仅tgz部署时需要",
+		DescriptionEN: "Working directory, only required for tgz deployment",
+		Visiable:      "PkgType.indexOf('tgz') !== -1",
 		Editable:      "false",
 	})
 	params.MustRegister(conf, "Cluster", &common.Parameter{
@@ -406,44 +891,137 @@ func RegistUpdateConfigSchema() common.ConfigParams {
 		DescriptionEN: "can't be empty",
 		Visiable:      "AuthenticateType != '2'",
 		InputType:     common.InputPassword,
+		Required:      "false",
 	})
 	params.MustRegister(conf, "SshPort", &common.Parameter{
 		LabelZH:       "SSH 端口",
 		LabelEN:       "SSH Port",
 		DescriptionZH: "不得为空",
 	})
-	params.MustRegister(conf, "IsReplica", &common.Parameter{
-		LabelZH:       "是否为多副本",
-		LabelEN:       "Replica",
-		DescriptionZH: "物理集群的每个shard是否为多副本, 生产环境建议每个shard为两副本",
-		DescriptionEN: "Whether each Shard of the cluster is multiple replication, we suggest each shard have two copies.",
+	params.MustRegister(conf, "Shards", &common.Parameter{
+		LabelZH:       "集群节点配置",
+		LabelEN:       "ClickHouse Cluster Node",
+		DescriptionEN: "shard of clickhouse cluster",
+		DescriptionZH: "集群分片信息",
 		Editable:      "false",
 	})
-	params.MustRegister(conf, "Hosts", &common.Parameter{
-		LabelZH:       "集群结点IP地址列表",
-		LabelEN:       "ClickHouse Node List",
-		DescriptionZH: "由ckman完成各结点分配到shard。每输入框为单个IP，或者IP范围，或者网段掩码",
-		DescriptionEN: "ClickHouse Node ip, support CIDR or Range.designation by ckman automatically",
+
+	var shard model.CkShard
+	params.MustRegister(shard, "Replicas", &common.Parameter{
+		LabelZH:       "分片",
+		LabelEN:       "Shard",
+		DescriptionEN: "replicas of each shard",
+		DescriptionZH: "集群每个分片的副本信息",
 		Editable:      "false",
 	})
+	var replica model.CkReplica
+	params.MustRegister(replica, "Ip", &common.Parameter{
+		LabelZH:  "副本节点IP",
+		LabelEN:  "Replica Node IP",
+		Editable: "false",
+	})
+	params.MustRegister(conf, "Keeper", &common.Parameter{
+		DescriptionZH: "如果使用clickhouse-keeper， 则默认由ckman托管；如果使用已有zookeeper或已经创建好的keeper集群，都视同zookeeper",
+		Candidates: []common.Candidate{
+			{Value: model.Zookeeper, LabelEN: "Zookeeper", LabelZH: "Zookeeper"},
+			{Value: model.ClickhouseKeeper, LabelEN: "ClickHouse-Keeper", LabelZH: "ClickHouse-Keeper"},
+		},
+		Editable: "false",
+	})
+
+	params.MustRegister(conf, "KeeperConf", &common.Parameter{
+		LabelZH:       "Keeper配置",
+		LabelEN:       "KeeperConf",
+		DescriptionZH: "clickhouse-keeper的配置项",
+		Visiable:      "Keeper == 'clickhouse-keeper'",
+	})
+
+	var keeper model.KeeperConf
+	params.MustRegister(keeper, "Runtime", &common.Parameter{
+		LabelZH:       "运行方式",
+		LabelEN:       "Runtime",
+		DescriptionZH: "如果单独部署，则和clickhouse-server 分开进程；如果内置，则和clickhouse-server放在一块",
+		Candidates: []common.Candidate{
+			{Value: model.KeeperRuntimeStandalone, LabelEN: "Standalone", LabelZH: "单独部署"},
+			{Value: model.KeeperRuntimeInternal, LabelEN: "Internal", LabelZH: "内置"},
+		},
+		Editable: "false",
+	})
+	params.MustRegister(keeper, "KeeperNodes", &common.Parameter{
+		LabelZH:  "Keeper节点",
+		LabelEN:  "KeeperNodes",
+		Editable: "false",
+	})
+
+	params.MustRegister(keeper, "TcpPort", &common.Parameter{
+		LabelZH: "Keeper端口",
+		LabelEN: "TcpPort",
+	})
+	params.MustRegister(keeper, "RaftPort", &common.Parameter{
+		LabelZH: "Raft通信端口",
+		LabelEN: "RaftPort",
+	})
+	params.MustRegister(keeper, "LogPath", &common.Parameter{
+		LabelZH:  "Log路径",
+		LabelEN:  "LogPath",
+		Editable: "false",
+	})
+	params.MustRegister(keeper, "SnapshotPath", &common.Parameter{
+		LabelZH:  "Snapshot路径",
+		LabelEN:  "SnapshotPath",
+		Editable: "false",
+	})
+	params.MustRegister(keeper, "Expert", &common.Parameter{
+		LabelZH:  "专家配置",
+		LabelEN:  "Expert",
+		Required: "false",
+	})
+	params.MustRegister(keeper, "Coordination", &common.Parameter{
+		LabelZH:  "协作配置",
+		LabelEN:  "Coordination",
+		Required: "false",
+	})
+
+	var coordination model.Coordination
+	params.MustRegister(coordination, "OperationTimeoutMs", &common.Parameter{
+		LabelZH:  "OperationTimeoutMs",
+		LabelEN:  "OperationTimeoutMs",
+		Default:  "10000",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "SessionTimeoutMs", &common.Parameter{
+		LabelZH:  "SessionTimeoutMs",
+		LabelEN:  "SessionTimeoutMs",
+		Default:  "30000",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "ForceSync", &common.Parameter{
+		LabelZH:  "ForceSync",
+		LabelEN:  "ForceSync",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "AutoForwarding", &common.Parameter{
+		LabelZH:  "AutoForwarding",
+		LabelEN:  "AutoForwarding",
+		Required: "false",
+	})
+	params.MustRegister(coordination, "Expert", &common.Parameter{
+		LabelZH:  "专家配置",
+		LabelEN:  "Expert",
+		Required: "false",
+	})
+
 	params.MustRegister(conf, "ZkNodes", &common.Parameter{
 		LabelZH:       "ZooKeeper集群结点列表",
 		LabelEN:       "Zookeeper Node List",
 		DescriptionZH: "每段为单个IP，或者IP范围，或者网段掩码",
 		DescriptionEN: "Zookeeper Node ip, support CIDR or Range.",
-		Editable:      "false",
+		Visiable:      "Keeper == 'zookeeper'",
 	})
 	params.MustRegister(conf, "ZkPort", &common.Parameter{
-		LabelZH: "ZooKeeper集群监听端口",
-		LabelEN: "Zookeeper Port",
-		Default: "2181",
-	})
-	params.MustRegister(conf, "ZkStatusPort", &common.Parameter{
-		LabelZH:       "Zookeeper监控端口",
-		LabelEN:       "Zookeeper Status Port",
-		DescriptionZH: "暴露给mntr等四字命令的端口，zookeeper 3.5.0 以上支持",
-		DescriptionEN: "expose to commands/mntr, zookeeper support it after 3.5.0",
-		Default:       "8080",
+		LabelZH:  "ZooKeeper集群监听端口",
+		LabelEN:  "Zookeeper Port",
+		Visiable: "Keeper == 'zookeeper'",
 	})
 	params.MustRegister(conf, "PromHost", &common.Parameter{
 		LabelZH:  "Promethues 地址",
@@ -457,14 +1035,78 @@ func RegistUpdateConfigSchema() common.ConfigParams {
 		Default:  "9090",
 		Required: "false",
 	})
+	params.MustRegister(conf, "PromMetricPort", &common.Parameter{
+		LabelZH:  "Promethues指标端口",
+		LabelEN:  "Prometheus Metrics Port",
+		Required: "false",
+	})
+
+	var promPort model.PromMetricPort
+	params.MustRegister(promPort, "ClickHouse", &common.Parameter{
+		LabelZH:       "ClickHouse指标端口",
+		LabelEN:       "ClickHouse Metrics Port",
+		Default:       "9363",
+		Required:      "false",
+		DescriptionEN: "Prometheus port export by ClickHouse",
+		DescriptionZH: "clickhouse暴露的prometheus端口",
+	})
+	params.MustRegister(promPort, "ZooKeeper", &common.Parameter{
+		LabelZH:       "ZooKeeper指标端口",
+		LabelEN:       "Zookeeper Metrics Port",
+		Default:       "7000",
+		Required:      "false",
+		DescriptionEN: "Prometheus port export by Zookeeper",
+		DescriptionZH: "zookeeper暴露的prometheus端口",
+	})
+	params.MustRegister(promPort, "NodeExport", &common.Parameter{
+		LabelZH:       "Node Exporter端口",
+		LabelEN:       "Node Exporter Port",
+		Default:       "9100",
+		Required:      "false",
+		DescriptionEN: "Prometheus port export by NodeExporter",
+		DescriptionZH: "NodeExporter暴露的prometheus端口",
+	})
+
 	params.MustRegister(conf, "Password", &common.Parameter{
 		LabelZH:   "默认用户密码",
 		LabelEN:   "Default Password",
 		InputType: common.InputPassword,
 	})
+	params.MustRegister(conf, "EncryptType", &common.Parameter{
+		LabelZH:       "密码加密算法",
+		LabelEN:       "EncryptType",
+		DescriptionZH: "密码保存时使用什么加密方式，默认明文",
+		DescriptionEN: "What encryption method is used when the password is saved, the default is plaintext",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "PLAINTEXT", LabelZH: "PLAINTEXT"},
+			{Value: "1", LabelEN: "SHA256_HEX", LabelZH: "SHA256_HEX"},
+			{Value: "2", LabelEN: "DOUBLE_SHA1_HEX", LabelZH: "DOUBLE_SHA1_HEX"},
+		},
+		Default: "0",
+	})
+	params.MustRegister(conf, "Protocol", &common.Parameter{
+		LabelZH: "连接协议",
+		LabelEN: "Protocol",
+		Default: "native",
+		Candidates: []common.Candidate{
+			{Value: "native", LabelEN: "native", LabelZH: "native"},
+			{Value: "http", LabelEN: "http", LabelZH: "http"},
+		},
+		Editable: "false",
+	})
 	params.MustRegister(conf, "Port", &common.Parameter{
 		LabelZH: "TCP端口",
 		LabelEN: "TCPPort",
+	})
+	params.MustRegister(conf, "HttpPort", &common.Parameter{
+		LabelZH:  "HTTP端口",
+		LabelEN:  "HTTP Port",
+		Editable: "false",
+	})
+	params.MustRegister(conf, "Secure", &common.Parameter{
+		LabelZH:  "TLS安全认证",
+		LabelEN:  "TLS Secure",
+		Editable: "false",
 	})
 	params.MustRegister(conf, "Storage", &common.Parameter{
 		LabelZH:       "集群存储配置",
@@ -521,8 +1163,15 @@ Non-professionals please do not fill in this`,
 		Candidates: []common.Candidate{
 			{Value: "local", LabelEN: "Local", LabelZH: "本地磁盘"},
 			{Value: "s3", LabelEN: "AWS S3", LabelZH: "AWS S3"},
-			{Value: "hdfs", LabelEN: "HDFS", LabelZH: "HDFS"},
+			//{Value: "hdfs", LabelEN: "HDFS", LabelZH: "HDFS"},
 		},
+	})
+	params.MustRegister(disk, "AllowedBackup", &common.Parameter{
+		LabelZH:       "允许备份",
+		LabelEN:       "AllowedBackup",
+		Required:      "false",
+		DescriptionZH: "是否允许备份数据到该磁盘",
+		DescriptionEN: "Whether to allow backup data to the disk",
 	})
 	params.MustRegister(disk, "DiskLocal", &common.Parameter{
 		LabelZH:  "本地硬盘",
@@ -628,6 +1277,38 @@ Non-professionals please do not fill in this`,
 		DescriptionEN: "normal user config management",
 		Required:      "false",
 	})
+	params.MustRegister(userconf, "Profiles", &common.Parameter{
+		LabelZH:  "配置管理",
+		LabelEN:  "Profiles",
+		Required: "false",
+	})
+	params.MustRegister(userconf, "Quotas", &common.Parameter{
+		LabelZH:  "配额管理",
+		LabelEN:  "Quotas",
+		Required: "false",
+	})
+	params.MustRegister(userconf, "Roles", &common.Parameter{
+		LabelZH:  "角色管理",
+		LabelEN:  "Roles",
+		Required: "false",
+	})
+	params.MustRegister(userconf, "Expert", &common.Parameter{
+		LabelZH: "用户高级配置",
+		LabelEN: "User Custom Config",
+		DescriptionZH: `自定义配置文件，语法接近xpath(https://www.w3schools.com/xml/xpath_syntax.asp);
+举例：title[@lang='en', @size=4]/header:header123， 最终生成的配置为:
+<title lang="en" size="4">
+    <header>header123</header>
+</title>
+非专业人士请勿填写此项`,
+		DescriptionEN: `Custom configuration items, similar to xpath syntax(https://www.w3schools.com/xml/xpath_syntax.asp);
+For example: title[@lang='en', @size=4]/header:header123, the final generated configuration is:
+<title lang="en" size="4">
+    <header>header123</header>
+</title>
+Non-professionals please do not fill in this`,
+		Required: "false",
+	})
 
 	var user model.User
 	params.MustRegister(user, "Name", &common.Parameter{
@@ -643,6 +1324,320 @@ Non-professionals please do not fill in this`,
 		DescriptionEN: "can't be empty",
 		InputType:     common.InputPassword,
 	})
+	params.MustRegister(user, "EncryptType", &common.Parameter{
+		LabelZH:       "密码加密算法",
+		LabelEN:       "EncryptType",
+		DescriptionZH: "密码保存时使用什么加密方式，默认明文",
+		DescriptionEN: "What encryption method is used when the password is saved, the default is plaintext",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "PLAINTEXT", LabelZH: "PLAINTEXT"},
+			{Value: "1", LabelEN: "SHA256_HEX", LabelZH: "SHA256_HEX"},
+			{Value: "2", LabelEN: "DOUBLE_SHA1_HEX", LabelZH: "DOUBLE_SHA1_HEX"},
+		},
+		Default: "0",
+	})
+	params.MustRegister(user, "Profile", &common.Parameter{
+		LabelZH:       "限额",
+		LabelEN:       "Profile",
+		DescriptionZH: "设置用户相关参数，如：最大内存使用、只读等",
+		DescriptionEN: "Set user-related parameters, such as: maximum memory usage, read-only, etc",
+		Required:      "false",
+	})
+	params.MustRegister(user, "Quota", &common.Parameter{
+		LabelZH:       "配额",
+		LabelEN:       "Quota",
+		DescriptionZH: "配额允许您在一段时间内跟踪或限制资源使用情况",
+		DescriptionEN: "Quotas allow you to track or limit resource usage over a period of time. ",
+		Required:      "false",
+	})
+	params.MustRegister(user, "Roles", &common.Parameter{
+		LabelZH:       "角色",
+		LabelEN:       "Roles",
+		DescriptionZH: "角色可以通过SQL的方式定义某类用户对数据库的访问权限",
+		DescriptionEN: "Roles can define the access rights of certain types of users to the database by means of SQL.",
+		Required:      "false",
+	})
+	params.MustRegister(user, "Networks", &common.Parameter{
+		LabelZH:       "允许登录地址",
+		LabelEN:       "NetWorks",
+		DescriptionZH: "用户可以连接到 ClickHouse 服务器的网络列表。",
+		DescriptionEN: "List of networks from which the user can connect to the ClickHouse server.",
+		Required:      "false",
+	})
+	params.MustRegister(user, "DbRowPolices", &common.Parameter{
+		LabelZH:       "访问权限",
+		LabelEN:       "DbRowPolices",
+		DescriptionZH: "设置数据库及表的访问权限",
+		DescriptionEN: "Set database and table access permissions",
+		Required:      "false",
+	})
+
+	var dbRow model.DbRowPolicy
+	params.MustRegister(dbRow, "Database", &common.Parameter{
+		LabelZH:       "数据库",
+		LabelEN:       "Database",
+		DescriptionZH: "用户只能访问的数据库",
+		DescriptionEN: "Databases that users can only access",
+	})
+	params.MustRegister(dbRow, "TblRowPolicies", &common.Parameter{
+		LabelZH:       "行访问权限",
+		LabelEN:       "TblRowPolicies",
+		DescriptionZH: "用户只能访问数据库的哪些行",
+		DescriptionEN: "Which rows of the database the user can only access",
+		Required:      "false",
+	})
+
+	var networks model.Networks
+	params.MustRegister(networks, "IPs", &common.Parameter{
+		LabelZH:       "IP列表",
+		LabelEN:       "IPs",
+		DescriptionZH: "用户能访问的数据库表",
+		DescriptionEN: "IP address or network mask",
+		Required:      "false",
+	})
+	params.MustRegister(networks, "Hosts", &common.Parameter{
+		LabelZH:       "主机列表",
+		LabelEN:       "Hosts",
+		DescriptionZH: "用户能访问的数据库表",
+		DescriptionEN: "o check access, a DNS query is performed, and all returned IP addresses are compared to the peer address.",
+		Required:      "false",
+	})
+	params.MustRegister(networks, "HostRegexps", &common.Parameter{
+		LabelZH:       "主机名正则匹配",
+		LabelEN:       "HostRegexps",
+		DescriptionZH: "主机名正则表达式匹配",
+		DescriptionEN: "Regular expression for hostnames",
+		Required:      "false",
+	})
+
+	var tblRow model.TblRowPolicy
+	params.MustRegister(tblRow, "Table", &common.Parameter{
+		LabelZH:       "表名",
+		LabelEN:       "Table",
+		DescriptionZH: "用户能访问的数据库表",
+		DescriptionEN: "Which table the user can only access",
+	})
+	params.MustRegister(tblRow, "Filter", &common.Parameter{
+		LabelZH:       "过滤器",
+		LabelEN:       "Filter",
+		DescriptionZH: "过滤器可以是任何产生 UInt8 类型值的表达式。它通常包含比较和逻辑运算符。不为此用户返回从 database_name.table1 中筛选结果为 0 的行。过滤与 PREWHERE 操作不兼容，并禁用 WHERE→PREWHERE 优化。",
+		DescriptionEN: "The filter can be any expression resulting in a UInt8-type value. It usually contains comparisons and logical operators. Rows from database_name.table1 where filter results to 0 are not returned for this user. The filtering is incompatible with PREWHERE operations and disables WHERE→PREWHERE optimization.",
+	})
+
+	var profile model.Profile
+	params.MustRegister(profile, "Name", &common.Parameter{
+		LabelZH: "配置名称",
+		LabelEN: "Name",
+	})
+	params.MustRegister(profile, "ReadOnly", &common.Parameter{
+		LabelZH:       "只读约束",
+		LabelEN:       "ReadOnly",
+		DescriptionZH: "限制除 DDL 查询之外的所有类型的查询的权限。",
+		DescriptionEN: "Restricts permissions for all types of queries except DDL queries.",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "Default", LabelZH: "不限制"},
+			{Value: "1", LabelEN: "Read", LabelZH: "只读权限"},
+			{Value: "2", LabelEN: "Read and Set", LabelZH: "读权限和设置权限"},
+		},
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(profile, "AllowDDL", &common.Parameter{
+		LabelZH:       "DDL权限",
+		LabelEN:       "AllowDDL",
+		DescriptionZH: "限制除 DDL 查询之外的所有类型的查询的权限",
+		DescriptionEN: "Restricts permissions for DDL queries",
+		Candidates: []common.Candidate{
+			{Value: "0", LabelEN: "Not Allowed", LabelZH: "不允许 "},
+			{Value: "1", LabelEN: "Allowed", LabelZH: "允许"},
+		},
+		Default:  "1",
+		Required: "false",
+	})
+	params.MustRegister(profile, "MaxThreads", &common.Parameter{
+		LabelZH:       "最大线程数",
+		LabelEN:       "MaxThreads",
+		DescriptionZH: "查询处理线程的最大数量，不包括从远程服务器检索数据的线程",
+		DescriptionEN: "The maximum number of query processing threads, excluding threads for retrieving data from remote servers (see the ‘max_distributed_connections’ parameter).",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "MaxMemoryUsage", &common.Parameter{
+		LabelZH:       "最大使用内存",
+		LabelEN:       "MaxMemoryUsage",
+		DescriptionZH: "用于在单个服务器上运行查询的最大RAM量",
+		DescriptionEN: "The maximum amount of RAM to use for running a query on a single server.",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "MaxMemoryUsageForAllQueries", &common.Parameter{
+		LabelZH:       "用户查询可用最大内存",
+		LabelEN:       "MaxMemoryUsageForAllQueries",
+		DescriptionZH: "在单个ClickHouse服务进程中，所有运行的查询累加在一起，限制使用的最大内存用量，默认为0不做限制",
+		DescriptionEN: "In a single ClickHouse service process, all running queries are accumulated together to limit the maximum memory usage. The default value is 0 and no limit is imposed.",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "MaxExecutionTime", &common.Parameter{
+		LabelZH:       "SQL超时时间",
+		LabelEN:       "MaxExecutionTime",
+		DescriptionZH: "如果查询运行时间超过指定的秒数，则行为将由“timeout_overflow_mode”确定，默认情况下为 - 引发异常。请注意，在数据处理过程中，将检查超时，查询只能在指定位置停止。它目前无法在聚合状态合并或查询分析期间停止，实际运行时间将高于此设置的值。",
+		DescriptionEN: "If query run time exceeded the specified number of seconds, the behavior will be determined by the 'timeout_overflow_mode' which by default is - throw an exception. Note that the timeout is checked and query can stop only in designated places during data processing. It currently cannot stop during merging of aggregation states or during query analysis, and the actual run time will be higher than the value of this setting.",
+		Required:      "false",
+	})
+	params.MustRegister(profile, "Expert", &common.Parameter{
+		LabelZH:       "专家配置",
+		LabelEN:       "Expert",
+		DescriptionZH: "限额高级配置，参考：https://clickhouse.com/docs/en/operations/settings/settings-profiles/",
+		DescriptionEN: "Advanced configuration of quota, refer to https://clickhouse.com/docs/en/operations/settings/settings-profiles/",
+		Required:      "false",
+	})
+
+	var quota model.Quota
+	params.MustRegister(quota, "Name", &common.Parameter{
+		LabelZH: "配额名称",
+		LabelEN: "Name",
+	})
+	params.MustRegister(quota, "Intervals", &common.Parameter{
+		LabelZH:       "周期",
+		LabelEN:       "Interval",
+		DescriptionZH: "配额生效的周期时段",
+		DescriptionEN: "Restrictions for a time period. You can set many intervals with different restrictions.",
+	})
+
+	var role model.Role
+	params.MustRegister(role, "Name", &common.Parameter{
+		LabelZH: "角色名称",
+		LabelEN: "Name",
+	})
+	params.MustRegister(role, "Grants", &common.Parameter{
+		LabelZH: "授权",
+		LabelEN: "Grants",
+	})
+	var grants model.Grants
+	params.MustRegister(grants, "Query", &common.Parameter{
+		LabelZH:       "授权 SQL",
+		LabelEN:       "Grant SQL",
+		DescriptionEN: "write SQL like `GRANT CREATE ON *.* WITH GRANT OPTION`",
+		DescriptionZH: "通过SQL编写GRANT语句定义， 如： `GRANT CREATE ON *.* WITH GRANT OPTION`",
+	})
+
+	var interval model.Interval
+	params.MustRegister(interval, "Duration", &common.Parameter{
+		LabelZH:       "周期时间",
+		LabelEN:       "Duration",
+		DescriptionZH: "周期的有效时长，默认为1小时",
+		DescriptionEN: "Length of the interval.",
+		Default:       "3600",
+	})
+	params.MustRegister(interval, "Queries", &common.Parameter{
+		LabelZH:       "请求总数限制",
+		LabelEN:       "Queries",
+		DescriptionZH: "0为不限制",
+		DescriptionEN: "Length of the interval.",
+		Default:       "0",
+		Required:      "false",
+	})
+	params.MustRegister(interval, "QuerySelects", &common.Parameter{
+		LabelZH:  "查询限制",
+		LabelEN:  "QuerySelects",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "QueryInserts", &common.Parameter{
+		LabelZH:  "插入限制",
+		LabelEN:  "QueryInserts",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "Errors", &common.Parameter{
+		LabelZH:  "错误限制",
+		LabelEN:  "Errors",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "ResultRows", &common.Parameter{
+		LabelZH:  "返回行限制",
+		LabelEN:  "ResultRows",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "ReadRows", &common.Parameter{
+		LabelZH:  "读取行限制",
+		LabelEN:  "ReadRows",
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(interval, "ExecutionTime", &common.Parameter{
+		LabelZH:  "执行时间限制",
+		LabelEN:  "ExecutionTime",
+		Default:  "0",
+		Required: "false",
+	})
+
+	return params
+}
+
+func RegistRebalanceClusterSchema() common.ConfigParams {
+	var params common.ConfigParams = make(map[string]*common.Parameter)
+	var req model.RebalanceTableReq
+	params.MustRegister(req, "Keys", &common.Parameter{
+		LabelZH:  "Keys",
+		LabelEN:  "Keys",
+		Required: "false",
+	})
+
+	params.MustRegister(req, "ExceptMaxShard", &common.Parameter{
+		LabelZH: "移除最大分片数据",
+		LabelEN: "ExceptMaxShard",
+	})
+
+	var key model.RebalanceShardingkey
+	params.MustRegister(key, "Database", &common.Parameter{
+		LabelZH: "数据库名",
+		LabelEN: "Database",
+	})
+
+	params.MustRegister(key, "Table", &common.Parameter{
+		LabelZH:       "表名",
+		LabelEN:       "Table",
+		DescriptionZH: "支持正则表达式",
+		DescriptionEN: "support regexp pattern",
+	})
+
+	params.MustRegister(key, "Table", &common.Parameter{
+		LabelZH:       "表名",
+		LabelEN:       "Table",
+		DescriptionZH: "支持正则表达式",
+		DescriptionEN: "support regexp pattern",
+		Regexp:        "^\\^.*\\$$",
+	})
+
+	params.MustRegister(key, "ShardingKey", &common.Parameter{
+		LabelZH:       "ShardingKey",
+		LabelEN:       "ShardingKey",
+		DescriptionZH: "如果ShardingKey为空，则默认按照partition做数据均衡",
+		DescriptionEN: "if shardingkey is empty, then rebalance by partition default",
+		Required:      "false",
+	})
+
+	params.MustRegister(key, "AllowLossRate", &common.Parameter{
+		LabelZH:       "允许错误率",
+		LabelEN:       "AllowLossRate",
+		DescriptionZH: "均衡数据过程中允许数据的丢失率",
+		DescriptionEN: "Allow the loss rate during the data balancing process",
+		Range: &common.Range{
+			Min:  0,
+			Max:  1,
+			Step: 0.01,
+		},
+		Default:  "0",
+		Required: "false",
+	})
+	params.MustRegister(key, "SaveTemps", &common.Parameter{
+		LabelZH:       "保留临时数据",
+		LabelEN:       "SaveTemps",
+		DescriptionZH: "均衡数据过程中保存原始数据到临时表",
+		DescriptionEN: "Save the original data to a temporary table during data balancing",
+		Required:      "false",
+	})
 
 	return params
 }
@@ -654,32 +1649,45 @@ func (ui *SchemaUIController) RegistSchemaInstance() {
 	}
 }
 
-// @Summary Get ui schema
-// @Description Get ui schema
-// @version 1.0
-// @Security ApiKeyAuth
-// @Success 200 {string} json ""
-// @Router /api/v1/ui/schema [get]
-func (ui *SchemaUIController) GetUISchema(c *gin.Context) {
+// 这个接口不暴露出去
+func (controller *SchemaUIController) GetUISchema(c *gin.Context) {
 	Type := c.Query("type")
 	if Type == "" {
-		model.WrapMsg(c, model.INVALID_PARAMS, nil)
-		return
-	}
-	var conf model.CKManClickHouseConfig
-	typo := strings.ToLower(Type)
-	params := GetSchemaParams(typo, conf)
-	if params == nil {
-		model.WrapMsg(c, model.GET_SCHEMA_UI_FAILED, errors.Errorf("type %s is not regist", typo))
-		return
-	}
-	schema, err := params.MarshalSchema(conf)
-	if err != nil {
-		model.WrapMsg(c, model.GET_SCHEMA_UI_FAILED, err)
+		controller.wrapfunc(c, model.E_INVALID_PARAMS, nil)
 		return
 	}
 
-	model.WrapMsg(c, model.SUCCESS, schema)
+	var schema string
+	var err error
+	switch Type {
+	case GET_SCHEMA_UI_CONFIG, GET_SCHEMA_UI_DEPLOY:
+		var conf model.CKManClickHouseConfig
+		typo := strings.ToLower(Type)
+		params := GetSchemaParams(typo, conf)
+		if params == nil {
+			controller.wrapfunc(c, model.E_INVALID_VARIABLE, errors.Errorf("type %s is not regist", typo))
+			return
+		}
+		schema, err = params.MarshalSchema(conf)
+		if err != nil {
+			controller.wrapfunc(c, model.E_MARSHAL_FAILED, err)
+			return
+		}
+	case GET_SCHEMA_UI_REBALANCE:
+		var req model.RebalanceTableReq
+		typo := strings.ToLower(Type)
+		params, ok := SchemaUIMapping[typo]
+		if !ok {
+			controller.wrapfunc(c, model.E_DATA_NOT_EXIST, err)
+			return
+		}
+		schema, err = params.MarshalSchema(req)
+		if err != nil {
+			controller.wrapfunc(c, model.E_MARSHAL_FAILED, err)
+			return
+		}
+	}
+	controller.wrapfunc(c, model.E_SUCCESS, schema)
 }
 
 func GetSchemaParams(typo string, conf model.CKManClickHouseConfig) common.ConfigParams {

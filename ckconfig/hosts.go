@@ -3,10 +3,9 @@ package ckconfig
 import (
 	"github.com/housepower/ckman/common"
 	"github.com/housepower/ckman/model"
-	"github.com/pkg/errors"
 )
 
-func GenerateHostXML(filename string, conf *model.CKManClickHouseConfig, host string)(string, error){
+func GenerateHostXML(filename string, conf *model.CKManClickHouseConfig, host string) (string, error) {
 	shardIndex := 0
 	for i, shard := range conf.Shards {
 		for _, replica := range shard.Replicas {
@@ -16,9 +15,12 @@ func GenerateHostXML(filename string, conf *model.CKManClickHouseConfig, host st
 			}
 		}
 	}
-
+	rootTag := "yandex"
+	if common.CompareClickHouseVersion(conf.Version, "22.x") >= 0 {
+		rootTag = "clickhouse"
+	}
 	xml := common.NewXmlFile(filename)
-	xml.Begin("yandex")
+	xml.Begin(rootTag)
 	xml.Comment("This xml file contains every node's special configuration self.")
 	xml.Write("interserver_http_host", host)
 	xml.Begin("macros")
@@ -26,10 +28,10 @@ func GenerateHostXML(filename string, conf *model.CKManClickHouseConfig, host st
 	xml.Write("shard", shardIndex)
 	xml.Write("replica", host)
 	xml.End("macros")
-	xml.End("yandex")
+	xml.End(rootTag)
 	err := xml.Dump()
 	if err != nil {
-		return "", errors.Wrap(err, "")
+		return "", err
 	}
 	return filename, nil
 }

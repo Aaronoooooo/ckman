@@ -10,12 +10,7 @@ section: "default"
 priority: "extra"
 provides:
 - ckman
-- ckmanpasswd
-- schemer
-- rebalancer
-- purger
-- exporter
-- migrate
+- ckmanctl
 maintainer: "Zhichang Yu <yuzhichang@gmail.com>"
 description: |
   ckman is a tool which used to manage and monitor ClickHouse database
@@ -24,25 +19,17 @@ license: "MIT"
 contents:
   - src: ./ckman
     dst: /usr/local/bin/ckman
-  - src: ./rebalancer
-    dst: /usr/local/bin/rebalancer
-  - src: ./ckmanpasswd
-    dst: /usr/local/bin/ckmanpasswd
-  - src: ./schemer
-    dst: /usr/local/bin/schemer
-  - src: ./purger
-    dst: /usr/local/bin/purger
-  - src: ./exporter
-    dst: /usr/local/bin/exporter
-  - src: ./migrate
-    dst: /usr/local/bin/migrate
+  - src: ./cmd/ckmanctl/ckmanctl
+    dst: /usr/local/bin/ckmanctl
+  - src: ./resources/yaml2json
+    dst: /usr/local/bin/yaml2json
   - src: ./README.md
     dst: /etc/ckman/package/README.md
-  - src: ./resources/ckman.yaml
-    dst: /etc/ckman/conf/ckman.yaml
+  - src: ./resources/ckman.hjson
+    dst: /etc/ckman/conf/ckman.hjson
     type: config|noreplace
-  - src: ./resources/migrate.yaml
-    dst: /etc/ckman/conf/migrate.yaml
+  - src: ./resources/migrate.hjson
+    dst: /etc/ckman/conf/migrate.hjson
     type: config|noreplace
   - src: ./resources/password
     dst: /etc/ckman/conf/password
@@ -61,6 +48,9 @@ contents:
     type: config
   - src: /usr/local/bin/ckman
     dst: /sbin/ckman
+    type: symlink
+  - src: /usr/local/bin/ckmanctl
+    dst: /sbin/ckmanctl
     type: symlink
   - src: /etc/systemd/system/ckman.service
     dst: /etc/systemd/system/multi-user.target.wants/ckman.service

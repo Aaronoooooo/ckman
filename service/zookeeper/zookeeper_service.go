@@ -1,18 +1,20 @@
 package zookeeper
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/housepower/ckman/common"
-	"github.com/housepower/ckman/repository"
+	"io"
+	"net"
 	"path"
 	"path/filepath"
-	"sort"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/housepower/ckman/repository"
+
 	"github.com/go-zookeeper/zk"
 	"github.com/housepower/ckman/model"
-	"github.com/housepower/ckman/service/clickhouse"
 	"github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 )
@@ -20,24 +22,26 @@ import (
 var ZkServiceCache *cache.Cache
 
 type ZkService struct {
-	ZkNodes []string
-	ZkPort  int
-	Conn    *zk.Conn
-	Event   <-chan zk.Event
+	ZkNodes        []string
+	ZkPort         int
+	SessionTimeout int
+	Conn           *zk.Conn
+	Event          <-chan zk.Event
 }
 
-func NewZkService(nodes []string, port int) (*ZkService, error) {
+func NewZkService(nodes []string, port int, sessionTimeout int) (*ZkService, error) {
 	zkService := &ZkService{
-		ZkNodes: nodes,
-		ZkPort:  port,
+		ZkNodes:        nodes,
+		ZkPort:         port,
+		SessionTimeout: sessionTimeout,
 	}
 
 	servers := make([]string, len(nodes))
 	for index, node := range nodes {
-		servers[index] = fmt.Sprintf("%s:%d", node, port)
+		servers[index] = net.JoinHostPort(node, fmt.Sprint(port))
 	}
 
-	c, e, err := zk.Connect(servers, time.Second)
+	c, e, err := zk.Connect(servers, time.Duration(sessionTimeout)*time.Second)
 	if err != nil {
 		return nil, errors.Wrap(err, "")
 	}
@@ -48,6 +52,22 @@ func NewZkService(nodes []string, port int) (*ZkService, error) {
 	return zkService, nil
 }
 
+func (z *ZkService) Reconnect() error {
+
+	servers := make([]string, len(z.ZkNodes))
+	for index, node := range z.ZkNodes {
+		servers[index] = net.JoinHostPort(node, fmt.Sprint(z.ZkPort))
+	}
+	c, e, err := zk.Connect(servers, time.Duration(z.SessionTimeout)*time.Second)
+	if err != nil {
+		return err
+	}
+
+	z.Conn = c
+	z.Event = e
+	return nil
+}
+
 func GetZkService(clusterName string) (*ZkService, error) {
 	zkService, ok := ZkServiceCache.Get(clusterName)
 	if ok {
@@ -55,9 +75,10 @@ func GetZkService(clusterName string) (*ZkService, error) {
 	} else {
 		conf, err := repository.Ps.GetClusterbyName(clusterName)
 		if err == nil {
-			service, err := NewZkService(conf.ZkNodes, conf.ZkPort)
+			nodes, port := GetZkInfo(&conf)
+			service, err := NewZkService(nodes, port, 300)
 			if err != nil {
-				return nil, errors.Wrap(err, "")
+				return nil, err
 			}
 			ZkServiceCache.SetDefault(clusterName, service)
 			return service, nil
@@ -67,73 +88,9 @@ func GetZkService(clusterName string) (*ZkService, error) {
 	}
 }
 
-func (z *ZkService) GetReplicatedTableStatus(conf *model.CKManClickHouseConfig) ([]model.ZkReplicatedTableStatus, error) {
-	err := clickhouse.GetReplicaZkPath(conf)
-	if err != nil {
-		return nil, errors.Wrap(err, "")
-	}
-
-	tableStatus := make([]model.ZkReplicatedTableStatus, len(conf.ZooPath))
-	tableIndex := 0
-	for key, value := range conf.ZooPath {
-		status := model.ZkReplicatedTableStatus{
-			Name: key,
-		}
-		shards := make([][]string, len(conf.Shards))
-		status.Values = shards
-		tableStatus[tableIndex] = status
-
-		for shardIndex, shard := range conf.Shards {
-			replicas := make([]string, len(shard.Replicas))
-			shards[shardIndex] = replicas
-
-			zooPath := strings.Replace(value, "{shard}", fmt.Sprintf("%d", shardIndex+1), -1)
-			zooPath = strings.Replace(zooPath, "{cluster}", conf.Cluster, -1)
-
-			path := fmt.Sprintf("%s/leader_election", zooPath)
-			leaderElection, _, err := z.Conn.Children(path)
-			if err != nil {
-				continue
-			}
-			sort.Strings(leaderElection)
-			// fix out of range cause panic issue
-			if len(leaderElection) == 0 {
-				continue
-			}
-			leaderBytes, _, _ := z.Conn.Get(fmt.Sprintf("%s/%s", path, leaderElection[0]))
-			if len(leaderBytes) == 0 {
-				continue
-			}
-			leader := strings.Split(string(leaderBytes), " ")[0]
-
-			for replicaIndex, replica := range shard.Replicas {
-				// the clickhouse version 20.5.x already Remove leader election, refer to : allow multiple leaders https://github.com/ClickHouse/ClickHouse/pull/11639
-				const featureVersion = "20.5.x"
-				logPointer := ""
-				if common.CompareClickHouseVersion(conf.Version,  featureVersion) >= 0 {
-					logPointer = "Multiple leaders"
-				} else {
-					if leader == replica.Ip {
-						logPointer = "Leader"
-					} else {
-						logPointer = "Follower"
-					}
-				}
-				path = fmt.Sprintf("%s/replicas/%s/log_pointer", zooPath, replica.Ip)
-				pointer, _, _ := z.Conn.Get(path)
-				logPointer = logPointer + fmt.Sprintf("[%s]",pointer)
-				replicas[replicaIndex] = logPointer
-			}
-		}
-		tableIndex++
-	}
-
-	return tableStatus, nil
-}
-
 func (z *ZkService) DeleteAll(node string) (err error) {
 	children, stat, err := z.Conn.Children(node)
-	if err == zk.ErrNoNode {
+	if errors.Is(err, zk.ErrNoNode) {
 		return nil
 	} else if err != nil {
 		err = errors.Wrap(err, "delete zk node: ")
@@ -147,6 +104,14 @@ func (z *ZkService) DeleteAll(node string) (err error) {
 		}
 	}
 
+	return z.Conn.Delete(node, stat.Version)
+}
+
+func (z *ZkService) Delete(node string) (err error) {
+	_, stat, err := z.Conn.Get(node)
+	if err != nil {
+		return
+	}
 	return z.Conn.Delete(node, stat.Version)
 }
 
@@ -167,4 +132,98 @@ func (z *ZkService) DeletePathUntilNode(path, endNode string) error {
 		}
 		path = parent
 	}
+}
+
+func (z *ZkService) CleanZoopath(conf model.CKManClickHouseConfig, clusterName, target string, dryrun bool) error {
+	root := fmt.Sprintf("/clickhouse/tables/%s", clusterName)
+	return clean(z, root, target, dryrun)
+}
+
+func clean(svr *ZkService, znode, target string, dryrun bool) error {
+	_, stat, err := svr.Conn.Get(znode)
+	if errors.Is(err, zk.ErrNoNode) {
+		return nil
+	} else if err != nil {
+		return errors.Wrap(err, znode)
+	}
+	base := path.Base(znode)
+	if base == target {
+		if dryrun {
+			fmt.Println(znode)
+		} else {
+			err = svr.DeleteAll(znode)
+			if err != nil {
+				fmt.Printf("znode %s delete failed: %v\n", znode, err)
+			} else {
+				fmt.Printf("znode %s delete success\n", znode)
+			}
+		}
+	} else if stat.NumChildren > 0 {
+		children, _, err := svr.Conn.Children(znode)
+		if err != nil {
+			return errors.Wrap(err, znode)
+		}
+
+		for _, child := range children {
+			subnode := path.Join(znode, child)
+			err := clean(svr, subnode, target, dryrun)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func ZkMetric(host string, port int, metric string) ([]byte, error) {
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	_, err = conn.Write([]byte(metric))
+	if err != nil {
+		return nil, err
+	}
+	var b []byte
+	for {
+		buf := [8192]byte{}
+		n, err := conn.Read(buf[:])
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		if n == 0 {
+			break
+		}
+		b = append(b, buf[:n]...)
+	}
+	resp := make(map[string]interface{})
+	lines := strings.Split(string(b), "\n")
+	re := regexp.MustCompile(`zk_(\w+)\s+(.*)`)
+	for _, line := range lines {
+		matches := re.FindStringSubmatch(line)
+		if len(matches) >= 3 {
+			resp[matches[1]] = matches[2]
+		}
+	}
+	if len(resp) == 0 {
+		return b, nil
+	}
+	return json.Marshal(resp)
+}
+
+func GetZkInfo(conf *model.CKManClickHouseConfig) ([]string, int) {
+	var nodes []string
+	var port int
+	if conf.Keeper == model.ClickhouseKeeper {
+		nodes = conf.KeeperConf.KeeperNodes
+		port = conf.KeeperConf.TcpPort
+	} else {
+		nodes = conf.ZkNodes
+		port = conf.ZkPort
+	}
+	return nodes, port
 }
